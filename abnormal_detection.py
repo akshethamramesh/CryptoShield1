@@ -1,197 +1,82 @@
-from datetime import datetime
+from collections import Counter
 
 
-def parse_timestamp(timestamp):
+def detect_abnormal_transactions(transactions):
+    """
+    Detect potentially abnormal transaction patterns.
 
-    if not timestamp:
-        return None
-
-    try:
-
-        return datetime.fromisoformat(
-            timestamp.replace(
-                "Z",
-                "+00:00"
-            )
-        )
-
-    except:
-
-        return None
-
-
-def analyze_abnormal_transactions(
-    transactions
-):
+    This is an investigation-support rule engine.
+    It does NOT determine criminal activity.
+    """
 
     if not transactions:
         return []
 
-    # Only financial transactions
-    financial_transactions = []
+    alerts = []
+
+    # --------------------------------------------
+    # Count destinations
+    # --------------------------------------------
+
+    destination_counts = Counter()
+
+    for tx in transactions:
+
+        destination = tx.get("to", "").lower()
+
+        if destination:
+            destination_counts[destination] += 1
+
+    # --------------------------------------------
+    # Calculate average transaction value
+    # --------------------------------------------
+
+    values = []
 
     for tx in transactions:
 
         try:
-            value = float(
-                tx.get("value", 0)
-            )
-        except:
+            value = float(tx.get("value", 0))
+        except (TypeError, ValueError):
             value = 0
 
         if value > 0:
-            financial_transactions.append(
-                tx
-            )
-
-    if not financial_transactions:
-        return []
-
-    # Average value
-    values = []
-
-    for tx in financial_transactions:
-
-        try:
-            values.append(
-                float(
-                    tx.get(
-                        "value",
-                        0
-                    )
-                )
-            )
-        except:
-            pass
-
-    if not values:
-        return []
+            values.append(value)
 
     average_value = (
         sum(values) / len(values)
+        if values
+        else 0
     )
 
-    # Destination frequency
-    destination_count = {}
+    # --------------------------------------------
+    # Check transactions
+    # --------------------------------------------
 
-    for tx in financial_transactions:
+    for index, tx in enumerate(transactions):
 
-        destination = tx.get(
-            "to",
-            ""
-        ).lower()
-
-        if destination:
-
-            destination_count[
-                destination
-            ] = (
-                destination_count.get(
-                    destination,
-                    0
-                ) + 1
-            )
-
-    # Rapid transactions
-    timestamped = []
-
-    for tx in financial_transactions:
-
-        timestamp = parse_timestamp(
-            tx.get(
-                "timestamp",
-                ""
-            )
-        )
-
-        if timestamp:
-
-            timestamped.append(
-                (
-                    timestamp,
-                    tx
-                )
-            )
-
-    timestamped.sort(
-        key=lambda x: x[0]
-    )
-
-    rapid_hashes = set()
-
-    for i in range(
-        len(timestamped)
-    ):
-
-        start_time = (
-            timestamped[i][0]
-        )
-
-        window_count = 1
-
-        for j in range(
-            i + 1,
-            len(timestamped)
-        ):
-
-            difference = (
-                timestamped[j][0]
-                - start_time
-            ).total_seconds()
-
-            if difference <= 60:
-
-                window_count += 1
-
-                if window_count >= 3:
-
-                    rapid_hashes.add(
-                        timestamped[i][1].get(
-                            "hash"
-                        )
-                    )
-
-                    rapid_hashes.add(
-                        timestamped[j][1].get(
-                            "hash"
-                        )
-                    )
-
-            else:
-
-                break
-
-    alerts = []
-
-    seen_hashes = set()
-
-    for tx in financial_transactions:
+        try:
+            value = float(tx.get("value", 0))
+        except (TypeError, ValueError):
+            value = 0
 
         tx_hash = tx.get(
             "hash",
-            ""
-        )
-
-        if tx_hash in seen_hashes:
-            continue
-
-        value = float(
-            tx.get(
-                "value",
-                0
-            )
+            f"transaction_{index + 1}"
         )
 
         destination = tx.get(
             "to",
             ""
-        ).lower()
+        )
 
         score = 0
-
         reasons = []
 
+        # ----------------------------------------
         # Large transaction
+        # ----------------------------------------
+
         if (
             average_value > 0
             and value >= average_value * 5
@@ -200,63 +85,110 @@ def analyze_abnormal_transactions(
             score += 30
 
             reasons.append(
-                "Transaction value is significantly above wallet average"
+                "Transaction value is significantly "
+                "higher than the wallet average"
             )
 
+        # ----------------------------------------
         # Rare destination
+        # ----------------------------------------
+
         if (
             destination
-            and destination_count.get(
-                destination,
-                0
-            ) == 1
+            and destination_counts[
+                destination.lower()
+            ] == 1
         ):
 
             score += 10
 
             reasons.append(
-                "Destination appears only once in observed financial activity"
+                "Destination appears only once"
             )
 
+        # ----------------------------------------
         # Rapid movement
-        if tx_hash in rapid_hashes:
+        # ----------------------------------------
 
-            score += 30
+        current_timestamp = tx.get(
+            "timestamp"
+        )
 
-            reasons.append(
-                "Multiple transactions detected within 60 seconds"
-            )
+        if current_timestamp:
+
+            try:
+                current_time = int(
+                    current_timestamp
+                )
+            except (TypeError, ValueError):
+                current_time = None
+
+            if current_time is not None:
+
+                rapid_count = 0
+
+                for other_tx in transactions:
+
+                    other_timestamp = other_tx.get(
+                        "timestamp"
+                    )
+
+                    if not other_timestamp:
+                        continue
+
+                    try:
+                        other_time = int(
+                            other_timestamp
+                        )
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        continue
+
+                    if (
+                        other_time != current_time
+                        and abs(
+                            other_time
+                            - current_time
+                        ) <= 60
+                    ):
+
+                        rapid_count += 1
+
+                if rapid_count >= 2:
+
+                    score += 30
+
+                    reasons.append(
+                        "Multiple transactions "
+                        "occurred within a short time window"
+                    )
+
+        # ----------------------------------------
+        # Create alert
+        # ----------------------------------------
 
         if score >= 20:
 
-            alerts.append(
-                {
-                    "hash": tx_hash,
-                    "from": tx.get(
-                        "from",
-                        ""
-                    ),
-                    "to": tx.get(
-                        "to",
-                        ""
-                    ),
-                    "value": value,
-                    "asset": tx.get(
-                        "asset",
-                        "ETH"
-                    ),
-                    "timestamp": tx.get(
-                        "timestamp",
-                        ""
-                    ),
-                    "score": score,
-                    "reasons": reasons
-                }
-            )
+            alerts.append({
+                "hash": tx_hash,
+                "tx_hash": tx_hash,
+                "value": value,
+                "score": score,
+                "reason": "; ".join(
+                    reasons
+                ),
+                "from": tx.get(
+                    "from",
+                    ""
+                ),
+                "to": destination
+            })
 
-            seen_hashes.add(
-                tx_hash
-            )
+    # --------------------------------------------
+    # Sort highest risk first
+    # --------------------------------------------
 
     alerts.sort(
         key=lambda x: x["score"],
@@ -264,3 +196,19 @@ def analyze_abnormal_transactions(
     )
 
     return alerts
+
+
+# ------------------------------------------------
+# Compatibility aliases
+# ------------------------------------------------
+
+def detect_abnormal(transactions):
+    return detect_abnormal_transactions(
+        transactions
+    )
+
+
+def analyze_transactions(transactions):
+    return detect_abnormal_transactions(
+        transactions
+    )
