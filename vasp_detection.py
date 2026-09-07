@@ -1,21 +1,25 @@
-VASP_REGISTRY = {
+# vasp_detection.py
 
-    "0x1111111111111111111111111111111111111111":
-    {
+# --------------------------------------------------
+# DEMO VASP REGISTRY
+# --------------------------------------------------
+# These are fictional/demo addresses for prototype use.
+# They are NOT real exchange wallet addresses.
+
+VASP_REGISTRY = {
+    "0x1111111111111111111111111111111111111111": {
         "name": "Demo Exchange Alpha",
         "type": "Centralized Exchange",
         "country": "Demo"
     },
 
-    "0x2222222222222222222222222222222222222222":
-    {
+    "0x2222222222222222222222222222222222222222": {
         "name": "Demo Exchange Beta",
-        "type": "Virtual Asset Service Provider",
+        "type": "Centralized Exchange",
         "country": "Demo"
     },
 
-    "0x3333333333333333333333333333333333333333":
-    {
+    "0x3333333333333333333333333333333333333333": {
         "name": "Demo Exchange Gamma",
         "type": "Centralized Exchange",
         "country": "Demo"
@@ -23,89 +27,80 @@ VASP_REGISTRY = {
 }
 
 
-def identify_vasp_with_hops(
-    trace_nodes
-):
+def detect_vasp(transactions):
+    """
+    Check whether transaction destinations/sources
+    match the demo VASP registry.
+
+    This provides an analytical association only.
+    It does not prove ownership or criminal activity.
+    """
 
     results = []
+    found = set()
 
-    for node in trace_nodes:
+    if not transactions:
+        return results
 
-        if isinstance(
-            node,
-            dict
-        ):
+    for tx in transactions:
 
-            wallet = node.get(
-                "wallet",
-                ""
-            ).lower()
+        sender = tx.get(
+            "from",
+            ""
+        ).lower()
 
-            hop = node.get(
-                "hop",
-                0
-            )
+        receiver = tx.get(
+            "to",
+            ""
+        ).lower()
 
-        else:
+        # Check sender
+        if sender in VASP_REGISTRY:
 
-            wallet = str(
-                node
-            ).lower()
+            if sender not in found:
 
-            hop = 0
+                info = VASP_REGISTRY[sender]
 
-        if wallet in VASP_REGISTRY:
-
-            info = VASP_REGISTRY[
-                wallet
-            ]
-
-            if hop == 1:
-
-                confidence = 90
-
-                evidence = [
-                    "Direct fund-flow connection to identified service address",
-                    "Association detected at Hop 1"
-                ]
-
-            elif hop == 2:
-
-                confidence = 80
-
-                evidence = [
-                    "Fund-flow connection to identified service address",
-                    "Association detected at Hop 2"
-                ]
-
-            else:
-
-                confidence = 70
-
-                evidence = [
-                    "Indirect fund-flow connection",
-                    f"Association detected at Hop {hop}"
-                ]
-
-            results.append(
-                {
-                    "wallet": wallet,
+                results.append({
+                    "address": tx.get(
+                        "from",
+                        ""
+                    ),
                     "name": info["name"],
                     "type": info["type"],
                     "country": info["country"],
-                    "hop": hop,
-                    "confidence": confidence,
-                    "evidence": evidence
-                }
-            )
+                    "confidence": "Demo registry match"
+                })
+
+                found.add(sender)
+
+        # Check receiver
+        if receiver in VASP_REGISTRY:
+
+            if receiver not in found:
+
+                info = VASP_REGISTRY[receiver]
+
+                results.append({
+                    "address": tx.get(
+                        "to",
+                        ""
+                    ),
+                    "name": info["name"],
+                    "type": info["type"],
+                    "country": info["country"],
+                    "confidence": "Demo registry match"
+                })
+
+                found.add(receiver)
 
     return results
 
 
-def analyze_vasp_associations(
-    trace_nodes
-):
+# Compatibility functions
+def detect_vasp_association(transactions):
+    return detect_vasp(transactions)
 
-    return identify_vasp_with_hops(
-        trace_nodes
-    )
+
+def find_vasp(transactions):
+    return detect_vasp(transactions)
