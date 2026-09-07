@@ -1,9 +1,10 @@
 import os
 import requests
-import streamlit as st
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
+
 
 # --------------------------------------------------
 # API KEY
@@ -14,7 +15,10 @@ try:
 except Exception:
     cloud_key = ""
 
-ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY") or cloud_key
+ETHERSCAN_API_KEY = (
+    os.getenv("ETHERSCAN_API_KEY")
+    or cloud_key
+)
 
 
 # --------------------------------------------------
@@ -28,7 +32,7 @@ CHAIN_IDS = {
 
 
 # --------------------------------------------------
-# SAFETY LIMITS
+# LIMITS
 # --------------------------------------------------
 
 MAX_WALLETS_PER_HOP = 5
@@ -43,41 +47,29 @@ MAX_PAGES = 3
 def get_transactions(wallet_address, chain="Ethereum"):
 
     if not ETHERSCAN_API_KEY:
-        raise RuntimeError(
-            "ETHERSCAN_API_KEY is not configured. "
-            "Add it in Streamlit Cloud Secrets."
-        )
-
-    wallet_address = wallet_address.strip()
-
-    if not wallet_address.startswith("0x"):
-        raise ValueError("Invalid wallet address.")
-
-    chain_id = CHAIN_IDS.get(chain)
-
-    if chain_id is None:
         raise ValueError(
-            f"Unsupported blockchain: {chain}"
+            "ETHERSCAN_API_KEY not found. "
+            "Add it to .env or Streamlit Secrets."
         )
+
+    chain_id = CHAIN_IDS.get(chain, 1)
 
     url = "https://api.etherscan.io/v2/api"
 
-    transactions = []
+    params = {
+        "chainid": chain_id,
+        "module": "account",
+        "action": "txlist",
+        "address": wallet_address,
+        "startblock": 0,
+        "endblock": 99999999,
+        "page": 1,
+        "offset": MAX_TRANSFERS_PER_WALLET,
+        "sort": "desc",
+        "apikey": ETHERSCAN_API_KEY
+    }
 
-    for page in range(1, MAX_PAGES + 1):
-
-        params = {
-            "chainid": chain_id,
-            "module": "account",
-            "action": "txlist",
-            "address": wallet_address,
-            "startblock": 0,
-            "endblock": 99999999,
-            "page": page,
-            "offset": MAX_TRANSFERS_PER_WALLET,
-            "sort": "desc",
-            "apikey": ETHERSCAN_API_KEY
-        }
+    try:
 
         response = requests.get(
             url,
@@ -89,82 +81,59 @@ def get_transactions(wallet_address, chain="Ethereum"):
 
         data = response.json()
 
-        result = data.get("result", [])
-
-        if not isinstance(result, list):
+        if data.get("status") == "0":
 
             message = data.get(
                 "message",
-                "Unknown API error"
+                "No transaction data"
             )
 
-            raise RuntimeError(
-                f"Etherscan API error: {message}"
-            )
+            # "No transactions found" is not a fatal error
+            if "No transactions" in message:
+                return []
 
-        if not result:
-            break
+            return []
 
-        for tx in result:
+        transactions = data.get("result", [])
 
-            sender = tx.get("from", "")
-            receiver = tx.get("to", "")
+        formatted = []
 
-            if not sender or not receiver:
-                continue
+        for tx in transactions:
 
             try:
-
-                value_wei = int(
+                value_eth = int(
                     tx.get("value", "0")
-                )
+                ) / 10**18
+            except:
+                value_eth = 0
 
-                value_native = (
-                    value_wei / 10**18
-                )
-
-            except Exception:
-
-                value_native = 0.0
-
-            transactions.append({
-
-                "hash": tx.get(
-                    "hash",
-                    ""
-                ),
-
-                "from": sender,
-
-                "to": receiver,
-
-                "value": value_native,
-
-                "asset": (
-                    "ETH"
-                    if chain == "Ethereum"
-                    else "BNB"
-                ),
-
+            formatted.append({
+                "hash": tx.get("hash", ""),
+                "from": tx.get("from", ""),
+                "to": tx.get("to", ""),
+                "value": value_eth,
+                "asset": "ETH",
                 "timestamp": tx.get(
                     "timeStamp",
                     ""
                 ),
-
                 "blockNumber": tx.get(
                     "blockNumber",
                     ""
                 )
             })
 
-        if len(result) < MAX_TRANSFERS_PER_WALLET:
-            break
+        return formatted
 
-    return transactions
+    except requests.RequestException as e:
+
+        raise RuntimeError(
+            f"Blockchain API error: {e}"
+        )
 
 
 # --------------------------------------------------
-# CONNECTED WALLETS
+# FIND CONNECTED WALLETS
 # --------------------------------------------------
 
 def find_connected_wallets(
@@ -174,30 +143,31 @@ def find_connected_wallets(
 
     wallet = wallet.lower()
 
-    connected = set()
+    connected = []
 
     for tx in transactions:
 
-        sender = tx["from"].lower()
-        receiver = tx["to"].lower()
+        sender = tx.get(
+            "from",
+            ""
+        ).lower()
 
-        if sender == wallet:
+        receiver = tx.get(
+            "to",
+            ""
+        ).lower()
 
-            connected.add(
-                tx["to"]
-            )
+        if sender == wallet and receiver:
+            connected.append(receiver)
 
-        elif receiver == wallet:
+        elif receiver == wallet and sender:
+            connected.append(sender)
 
-            connected.add(
-                tx["from"]
-            )
-
-    return list(connected)
+    return list(set(connected))
 
 
 # --------------------------------------------------
-# RANK CONNECTED WALLETS
+# RANK WALLETS
 # --------------------------------------------------
 
 def rank_connected_wallets(
@@ -207,244 +177,236 @@ def rank_connected_wallets(
 
     wallet = wallet.lower()
 
-    counts = {}
+    interaction_count = {}
 
     for tx in transactions:
 
-        sender = tx["from"].lower()
-        receiver = tx["to"].lower()
+        sender = tx.get(
+            "from",
+            ""
+        ).lower()
 
-        address = None
+        receiver = tx.get(
+            "to",
+            ""
+        ).lower()
 
-        if sender == wallet:
+        if sender == wallet and receiver:
 
-            address = tx["to"]
+            interaction_count[receiver] = (
+                interaction_count.get(receiver, 0) + 1
+            )
 
-        elif receiver == wallet:
+        elif receiver == wallet and sender:
 
-            address = tx["from"]
-
-        if address:
-
-            key = address.lower()
-
-            if key not in counts:
-
-                counts[key] = {
-                    "address": address,
-                    "count": 0
-                }
-
-            counts[key]["count"] += 1
+            interaction_count[sender] = (
+                interaction_count.get(sender, 0) + 1
+            )
 
     ranked = sorted(
-        counts.values(),
-        key=lambda x: x["count"],
+        interaction_count.items(),
+        key=lambda x: x[1],
         reverse=True
     )
 
     return [
-        item["address"]
-        for item in ranked
+        wallet_address
+        for wallet_address, count in ranked[
+            :MAX_WALLETS_PER_HOP
+        ]
     ]
 
 
 # --------------------------------------------------
-# MULTI-HOP TRACE
+# TRACE WALLET
 # --------------------------------------------------
 
 def trace_wallet(
     start_wallet,
     chain="Ethereum",
-    max_hops=1
+    max_hops=2
 ):
 
     start_wallet = start_wallet.strip()
 
-    visited = set()
-
-    queue = [
-        (start_wallet, 0)
-    ]
-
     all_transactions = []
 
-    # --------------------------------------------------
-    # STORE WALLET HOP LEVEL
-    # --------------------------------------------------
+    visited = set()
 
-    hop_map = {
-        start_wallet.lower(): 0
-    }
+    wallet_hops = {}
 
-    wallet_display_names = {
-        start_wallet.lower(): start_wallet
-    }
+    hop_map = {}
 
-    # --------------------------------------------------
-    # BFS TRACE
-    # --------------------------------------------------
+    current_level = [
+        start_wallet
+    ]
 
-    while queue:
+    wallet_hops[
+        start_wallet
+    ] = 0
 
-        current_wallet, current_hop = queue.pop(0)
+    hop_map[
+        start_wallet.lower()
+    ] = 0
 
-        current_key = current_wallet.lower()
+    # ----------------------------------------------
+    # BFS MULTI-HOP
+    # ----------------------------------------------
 
-        if current_key in visited:
-            continue
+    for hop in range(max_hops + 1):
 
-        visited.add(current_key)
+        next_level = []
 
-        try:
+        for wallet in current_level:
 
-            transactions = get_transactions(
-                current_wallet,
-                chain
+            normalized_wallet = wallet.lower()
+
+            if normalized_wallet in visited:
+                continue
+
+            visited.add(
+                normalized_wallet
             )
 
-        except Exception:
+            try:
 
-            continue
+                transactions = get_transactions(
+                    wallet,
+                    chain
+                )
 
-        all_transactions.extend(
-            transactions
-        )
+            except Exception as e:
 
-        # Stop expanding after requested hop
-        if current_hop >= max_hops:
-            continue
+                print(
+                    f"Error scanning {wallet}: {e}"
+                )
 
-        # Find connected wallets
-        connected = rank_connected_wallets(
-            current_wallet,
-            transactions
-        )
+                transactions = []
 
-        # Only investigate top wallets
-        connected = connected[
-            :MAX_WALLETS_PER_HOP
-        ]
+            all_transactions.extend(
+                transactions
+            )
 
-        for next_wallet in connected:
+            # --------------------------------------
+            # FIND NEXT WALLETS
+            # --------------------------------------
 
-            next_key = next_wallet.lower()
+            if hop < max_hops:
 
-            if next_key not in visited:
+                connected = rank_connected_wallets(
+                    wallet,
+                    transactions
+                )
 
-                # Store hop
-                if next_key not in hop_map:
+                for next_wallet in connected:
 
-                    hop_map[
-                        next_key
-                    ] = current_hop + 1
-
-                    wallet_display_names[
-                        next_key
-                    ] = next_wallet
-
-                    queue.append(
-                        (
-                            next_wallet,
-                            current_hop + 1
-                        )
+                    normalized_next = (
+                        next_wallet.lower()
                     )
 
-    # --------------------------------------------------
-    # REMOVE DUPLICATE TRANSACTIONS
-    # --------------------------------------------------
+                    if normalized_next not in visited:
 
-    unique_transactions = {}
+                        if normalized_next not in hop_map:
+
+                            hop_map[
+                                normalized_next
+                            ] = hop + 1
+
+                            wallet_hops[
+                                next_wallet
+                            ] = hop + 1
+
+                            next_level.append(
+                                next_wallet
+                            )
+
+        current_level = next_level
+
+        if not current_level:
+            break
+
+    # ----------------------------------------------
+    # UNIQUE TRANSACTIONS
+    # ----------------------------------------------
+
+    unique_transactions = []
+
+    transaction_hashes = set()
 
     for tx in all_transactions:
 
-        tx_hash = tx.get("hash")
+        tx_hash = tx.get(
+            "hash",
+            ""
+        )
 
-        if tx_hash:
+        if tx_hash not in transaction_hashes:
 
-            unique_transactions[
+            transaction_hashes.add(
                 tx_hash
-            ] = tx
+            )
 
-    final_transactions = list(
-        unique_transactions.values()
-    )
+            unique_transactions.append(
+                tx
+            )
 
-    # --------------------------------------------------
-    # COLLECT WALLETS
-    # --------------------------------------------------
+    # ----------------------------------------------
+    # WALLETS
+    # ----------------------------------------------
 
     wallets = set()
 
-    for tx in final_transactions:
+    for tx in unique_transactions:
 
         if tx.get("from"):
-
             wallets.add(
                 tx["from"]
             )
 
         if tx.get("to"):
-
             wallets.add(
                 tx["to"]
             )
 
     wallets.add(start_wallet)
 
-    # --------------------------------------------------
-    # ADD UNKNOWN WALLETS
-    # --------------------------------------------------
-
-    for wallet in wallets:
-
-        key = wallet.lower()
-
-        if key not in hop_map:
-
-            hop_map[key] = max_hops
-
-            wallet_display_names[
-                key
-            ] = wallet
-
-    # --------------------------------------------------
+    # ----------------------------------------------
     # MAX HOP
-    # --------------------------------------------------
+    # ----------------------------------------------
 
-    actual_max_hop = max(
-        hop_map.values(),
-        default=0
-    )
+    max_hop_found = 0
 
-    # --------------------------------------------------
-    # RETURN
-    # --------------------------------------------------
+    if hop_map:
+
+        max_hop_found = max(
+            hop_map.values()
+        )
 
     return {
 
-        "start_wallet": start_wallet,
+        "start_wallet":
+            start_wallet,
 
-        "chain": chain,
+        "chain":
+            chain,
 
-        "transactions": final_transactions,
+        "transactions":
+            unique_transactions,
 
-        "wallets": list(wallets),
+        "wallets":
+            list(wallets),
 
-        "max_hop": actual_max_hop,
+        "max_hop":
+            max_hop_found,
 
-        "visited_wallets": list(
-            visited
-        ),
+        "visited_wallets":
+            list(visited),
 
-        # NEW
-        "hop_map": hop_map,
+        "hop_map":
+            hop_map,
 
-        "wallet_hops": {
-            wallet_display_names[key]: hop
-            for key, hop in hop_map.items()
-            if key in wallet_display_names
-        }
+        "wallet_hops":
+            wallet_hops
     }
 
 
@@ -453,13 +415,13 @@ def trace_wallet(
 # --------------------------------------------------
 
 def recursive_trace(
-    start_wallet,
+    wallet,
     chain="Ethereum",
-    max_hops=1
+    max_hops=2
 ):
 
     return trace_wallet(
-        start_wallet,
+        wallet,
         chain,
         max_hops
     )

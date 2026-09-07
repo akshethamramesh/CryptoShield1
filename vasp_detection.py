@@ -1,12 +1,5 @@
-# vasp_detection.py
-
-# --------------------------------------------------
-# DEMO VASP REGISTRY
-# --------------------------------------------------
-# These are fictional/demo addresses for prototype use.
-# They are NOT real exchange wallet addresses.
-
 VASP_REGISTRY = {
+
     "0x1111111111111111111111111111111111111111": {
         "name": "Demo Exchange Alpha",
         "type": "Centralized Exchange",
@@ -28,13 +21,6 @@ VASP_REGISTRY = {
 
 
 def detect_vasp(transactions):
-    """
-    Check whether transaction destinations/sources
-    match the demo VASP registry.
-
-    This provides an analytical association only.
-    It does not prove ownership or criminal activity.
-    """
 
     results = []
     found = set()
@@ -44,15 +30,8 @@ def detect_vasp(transactions):
 
     for tx in transactions:
 
-        sender = tx.get(
-            "from",
-            ""
-        ).lower()
-
-        receiver = tx.get(
-            "to",
-            ""
-        ).lower()
+        sender = tx.get("from", "").lower()
+        receiver = tx.get("to", "").lower()
 
         # Check sender
         if sender in VASP_REGISTRY:
@@ -62,10 +41,7 @@ def detect_vasp(transactions):
                 info = VASP_REGISTRY[sender]
 
                 results.append({
-                    "address": tx.get(
-                        "from",
-                        ""
-                    ),
+                    "address": tx.get("from", ""),
                     "name": info["name"],
                     "type": info["type"],
                     "country": info["country"],
@@ -82,10 +58,7 @@ def detect_vasp(transactions):
                 info = VASP_REGISTRY[receiver]
 
                 results.append({
-                    "address": tx.get(
-                        "to",
-                        ""
-                    ),
+                    "address": tx.get("to", ""),
                     "name": info["name"],
                     "type": info["type"],
                     "country": info["country"],
@@ -97,7 +70,6 @@ def detect_vasp(transactions):
     return results
 
 
-# Compatibility functions
 def detect_vasp_association(transactions):
     return detect_vasp(transactions)
 
