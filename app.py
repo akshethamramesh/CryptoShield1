@@ -1,21 +1,21 @@
 import streamlit as st
 import pandas as pd
+import networkx as nx
 from pyvis.network import Network
-from streamlit.components.v1 import html
-
-from blockchain import recursive_trace
-from abnormal_detection import detect_abnormal_transactions
-from vasp_detection import detect_vasp
-from report_generator import generate_pdf_report
-
+import streamlit.components.v1 as components
 import tempfile
 import os
-from datetime import datetime
+
+from blockchain import trace_wallet
+from abnormal_detection import detect_abnormal_transactions
+from vasp_detection import detect_vasp
+from transaction_dna import analyze_transaction_dna
+from report_generator import generate_pdf_report
 
 
-# ============================================================
+# =========================================================
 # PAGE CONFIG
-# ============================================================
+# =========================================================
 
 st.set_page_config(
     page_title="CryptoShield",
@@ -24,41 +24,42 @@ st.set_page_config(
 )
 
 
-# ============================================================
-# HEADER
-# ============================================================
+# =========================================================
+# TITLE
+# =========================================================
 
 st.title("🛡️ CryptoShield")
+st.subheader("Blockchain Fraud Intelligence System")
 
-st.subheader(
-    "Blockchain Fraud Intelligence System"
-)
+st.markdown(
+    """
+    **CryptoShield** analyzes a victim-reported cryptocurrency wallet,
+    reconstructs fund movement across blockchain transactions,
+    detects suspicious behavioral patterns, and identifies potential
+    VASP/exchange associations.
 
-st.write(
-    "Analyze a reported cryptocurrency wallet, trace fund flows, "
-    "detect suspicious patterns, identify potential VASP associations, "
-    "and generate an investigation report."
+    > ⚠️ This system provides analytical intelligence only.
+    > It does not establish criminal activity or identify a person as guilty.
+    """
 )
 
 st.divider()
 
 
-# ============================================================
+# =========================================================
 # SIDEBAR
-# ============================================================
+# =========================================================
 
-st.sidebar.header(
-    "⚙️ Investigation Settings"
+st.sidebar.header("🔎 Investigation Input")
+
+wallet_address = st.sidebar.text_input(
+    "Reported Suspect Wallet",
+    placeholder="0x..."
 )
 
 chain = st.sidebar.selectbox(
-    "Select Blockchain",
+    "Blockchain",
     ["Ethereum", "BSC"]
-)
-
-wallet_address = st.sidebar.text_input(
-    "Reported Suspect Wallet Address",
-    placeholder="0x..."
 )
 
 max_hop = st.sidebar.slider(
@@ -69,206 +70,178 @@ max_hop = st.sidebar.slider(
 )
 
 analyze_button = st.sidebar.button(
-    "🔍 Analyze Wallet",
+    "🚀 Start Investigation",
     use_container_width=True
 )
 
 
-# ============================================================
-# DEMO TRANSACTIONS
-# ============================================================
+# =========================================================
+# SESSION STATE
+# =========================================================
 
-demo_transactions = [
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
 
-    {
-        "hash": "demo_tx_001",
-        "from": "DEMO_SUSPECT_A",
-        "to": "DEMO_WALLET_B",
-        "value": 5,
-        "asset": "ETH",
-        "timeStamp": "1757000000"
-    },
+if "dna_result" not in st.session_state:
+    st.session_state.dna_result = None
 
-    {
-        "hash": "demo_tx_002",
-        "from": "DEMO_SUSPECT_A",
-        "to": "DEMO_WALLET_C",
-        "value": 3,
-        "asset": "ETH",
-        "timeStamp": "1757000060"
-    },
+if "abnormal_alerts" not in st.session_state:
+    st.session_state.abnormal_alerts = None
 
-    {
-        "hash": "demo_tx_003",
-        "from": "DEMO_SUSPECT_A",
-        "to": "DEMO_WALLET_D",
-        "value": 2,
-        "asset": "ETH",
-        "timeStamp": "1757000120"
-    },
-
-    {
-        "hash": "demo_tx_004",
-        "from": "DEMO_WALLET_B",
-        "to": "DEMO_WALLET_E",
-        "value": 4.8,
-        "asset": "ETH",
-        "timeStamp": "1757000180"
-    },
-
-    {
-        "hash": "demo_tx_005",
-        "from": "DEMO_WALLET_C",
-        "to": "DEMO_WALLET_E",
-        "value": 2.9,
-        "asset": "ETH",
-        "timeStamp": "1757000240"
-    },
-
-    {
-        "hash": "demo_tx_006",
-        "from": "DEMO_WALLET_D",
-        "to": "DEMO_WALLET_F",
-        "value": 1.9,
-        "asset": "ETH",
-        "timeStamp": "1757000300"
-    },
-
-    {
-        "hash": "demo_tx_007",
-        "from": "DEMO_WALLET_E",
-        "to": "0x1111111111111111111111111111111111111111",
-        "value": 7.7,
-        "asset": "ETH",
-        "timeStamp": "1757000360"
-    }
-]
+if "vasp_results" not in st.session_state:
+    st.session_state.vasp_results = None
 
 
-# ============================================================
+# =========================================================
 # HELPER FUNCTIONS
-# ============================================================
+# =========================================================
 
-def format_timestamp(timestamp):
+def calculate_risk(
+    transaction_count,
+    connected_wallets,
+    rapid_movements,
+    abnormal_alerts,
+    vasp_results,
+    fan_in,
+    fan_out,
+    max_hop
+):
+    """
+    Explainable prototype risk score.
+    This is an analytical score, not a criminal verdict.
+    """
 
-    try:
+    score = 0
+    reasons = []
 
-        if not timestamp:
-            return "Unknown"
+    # Transaction activity
+    if transaction_count >= 100:
+        score += 15
+        reasons.append("High transaction activity")
 
-        return datetime.fromtimestamp(
-            int(timestamp)
-        ).strftime(
-            "%d-%m-%Y %H:%M:%S"
+    # Connected wallets
+    if connected_wallets >= 20:
+        score += 15
+        reasons.append("Large connected wallet network")
+
+    # Rapid movements
+    if rapid_movements >= 5:
+        score += 15
+        reasons.append("Rapid fund movement detected")
+
+    # Abnormal transactions
+    if len(abnormal_alerts) >= 5:
+        score += 15
+        reasons.append("Multiple abnormal transaction indicators")
+
+    # Fan-out
+    if fan_out >= 5:
+        score += 10
+        reasons.append("High fan-out behavior")
+
+    # Fan-in
+    if fan_in >= 5:
+        score += 10
+        reasons.append("High fan-in behavior")
+
+    # Multi-hop
+    if max_hop >= 2:
+        score += 10
+        reasons.append("Multi-hop fund movement observed")
+
+    # VASP association
+    if len(vasp_results) > 0:
+        score += 10
+        reasons.append("Potential VASP association identified")
+
+    score = min(score, 100)
+
+    if score >= 70:
+        level = "HIGH"
+    elif score >= 40:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    return score, level, reasons
+
+
+def detect_patterns(transactions, start_wallet, wallet_hops):
+    """
+    Detect high-level fund-flow patterns.
+    """
+
+    patterns = []
+
+    if not transactions:
+        return patterns
+
+    start_wallet = start_wallet.lower()
+
+    outgoing = set()
+    incoming = set()
+
+    for tx in transactions:
+
+        sender = tx.get("from", "").lower()
+        receiver = tx.get("to", "").lower()
+
+        if sender == start_wallet and receiver:
+            outgoing.add(receiver)
+
+        if receiver == start_wallet and sender:
+            incoming.add(sender)
+
+    # Fan-out
+    if len(outgoing) >= 5:
+        patterns.append(
+            "Fund splitting / fan-out behavior detected"
         )
 
-    except:
+    # Fan-in
+    if len(incoming) >= 5:
+        patterns.append(
+            "Fund consolidation / fan-in behavior detected"
+        )
 
-        return str(timestamp)
+    # Multi-hop
+    max_detected_hop = max(
+        wallet_hops.values()
+    ) if wallet_hops else 0
 
+    if max_detected_hop >= 2:
+        patterns.append(
+            f"Multi-hop fund movement detected up to Hop {max_detected_hop}"
+        )
 
-def short_address(address):
+    # Rapid transfers
+    timestamps = []
 
-    address = str(address)
+    for tx in transactions:
 
-    if len(address) <= 18:
-        return address
+        try:
+            timestamp = int(tx.get("timeStamp", 0))
+            if timestamp:
+                timestamps.append(timestamp)
+        except:
+            pass
 
-    return (
-        address[:8]
-        + "..."
-        + address[-6:]
-    )
+    timestamps.sort()
 
+    rapid_count = 0
 
-def get_transaction_hop(
-    tx,
-    wallet_hops,
-    start_wallet
-):
+    for i in range(1, len(timestamps)):
 
-    sender = str(
-        tx.get("from", "")
-    ).lower()
+        if timestamps[i] - timestamps[i - 1] <= 300:
+            rapid_count += 1
 
-    receiver = str(
-        tx.get("to", "")
-    ).lower()
+    if rapid_count >= 5:
+        patterns.append(
+            "Rapid transaction sequence detected"
+        )
 
-    start_wallet = str(
-        start_wallet
-    ).lower()
+    return patterns
 
-    if sender in wallet_hops:
-        return wallet_hops[sender]
-
-    if receiver in wallet_hops:
-        return wallet_hops[receiver]
-
-    if sender == start_wallet:
-        return 0
-
-    return "-"
-
-
-def get_indicator(
-    tx,
-    abnormal_hashes,
-    vasp_addresses,
-    wallet_hops
-):
-
-    tx_hash = tx.get(
-        "hash",
-        ""
-    )
-
-    sender = str(
-        tx.get("from", "")
-    ).lower()
-
-    receiver = str(
-        tx.get("to", "")
-    ).lower()
-
-
-    if tx_hash in abnormal_hashes:
-
-        return "🚨 Abnormal"
-
-
-    if (
-        sender in vasp_addresses
-        or receiver in vasp_addresses
-    ):
-
-        return "🏦 VASP"
-
-
-    sender_hop = wallet_hops.get(
-        sender,
-        0
-    )
-
-    receiver_hop = wallet_hops.get(
-        receiver,
-        0
-    )
-
-    if (
-        sender_hop >= 1
-        or receiver_hop >= 2
-    ):
-
-        return "🔗 Multi-Hop"
-
-
-    return "Normal"
-
-
-# ============================================================
-# FUND FLOW V2 HELPER
-# ============================================================
 
 def get_node_info(
     address,
@@ -277,989 +250,100 @@ def get_node_info(
     vasp_addresses
 ):
 
-    address_lower = str(
-        address
-    ).lower()
+    address_lower = address.lower()
 
-    start_lower = str(
-        start_wallet
-    ).lower()
-
-
-    # --------------------------------------------------------
-    # Reported wallet
-    # --------------------------------------------------------
-
-    if address_lower == start_lower:
-
-        return (
-            "🔴",
-            "Reported Wallet",
-            0
-        )
-
-
-    # --------------------------------------------------------
-    # VASP
-    # --------------------------------------------------------
+    if address_lower == start_wallet.lower():
+        return "🔴 Reported Wallet", 0
 
     if address_lower in vasp_addresses:
-
-        hop = wallet_hops.get(
+        return "🏦 Potential VASP", wallet_hops.get(
             address_lower,
-            3
+            "?"
         )
-
-        return (
-            "🏦",
-            "Potential VASP",
-            hop
-        )
-
-
-    # --------------------------------------------------------
-    # Normal wallet
-    # --------------------------------------------------------
 
     hop = wallet_hops.get(
         address_lower,
-        1
+        "?"
     )
-
 
     if hop == 1:
-
-        return (
-            "🟡",
-            "Hop 1 Wallet",
-            hop
-        )
+        return "🟡 Hop 1", hop
 
     elif hop == 2:
+        return "🟠 Hop 2", hop
 
-        return (
-            "🟠",
-            "Hop 2 Wallet",
-            hop
-        )
+    elif isinstance(hop, int) and hop >= 3:
+        return "🟣 Hop 3+", hop
 
-    else:
-
-        return (
-            "🟣",
-            f"Hop {hop} Wallet",
-            hop
-        )
+    return "⚪ Wallet", hop
 
 
-# ============================================================
-# MAIN ANALYSIS
-# ============================================================
+def build_fund_flow_graph(
+    transactions,
+    start_wallet,
+    wallet_hops,
+    vasp_results
+):
 
-if analyze_button:
+    graph = nx.DiGraph()
 
-    # ========================================================
-    # VALIDATION
-    # ========================================================
-
-    if not wallet_address:
-
-        st.warning(
-            "⚠️ Please enter a wallet address."
-        )
-
-        st.stop()
-
-
-    # ========================================================
-    # DEMO MODE
-    # ========================================================
-
-    if wallet_address.upper() == "DEMO":
-
-        st.info(
-            "🧪 Demo Suspicious Wallet Mode"
-        )
-
-        transactions = demo_transactions
-
-        connected_wallets = list({
-            tx["from"]
-            for tx in transactions
-            if tx["from"] != "DEMO_SUSPECT_A"
-        })
-
-        connected_wallets += list({
-            tx["to"]
-            for tx in transactions
-            if tx["to"] != "DEMO_SUSPECT_A"
-        })
-
-        connected_wallets = list(
-            set(connected_wallets)
-        )
-
-        actual_max_hop = 3
-
-        wallet_hops = {
-
-            "demo_suspect_a": 0,
-
-            "demo_wallet_b": 1,
-            "demo_wallet_c": 1,
-            "demo_wallet_d": 1,
-
-            "demo_wallet_e": 2,
-            "demo_wallet_f": 2,
-
-            "0x1111111111111111111111111111111111111111": 3
-        }
-
-
-    # ========================================================
-    # REAL WALLET MODE
-    # ========================================================
-
-    else:
-
-        with st.spinner(
-            "⛓️ Fetching blockchain transactions..."
-        ):
-
-            try:
-
-                result = recursive_trace(
-                    wallet_address,
-                    chain,
-                    max_hop=max_hop
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"❌ Blockchain analysis failed: {e}"
-                )
-
-                st.stop()
-
-
-        transactions = result.get(
-            "transactions",
-            []
-        )
-
-        connected_wallets = result.get(
-            "wallets",
-            []
-        )
-
-        actual_max_hop = result.get(
-            "max_hop",
-            max_hop
-        )
-
-        wallet_hops = result.get(
-            "wallet_hops",
-            result.get(
-                "hop_map",
-                {}
-            )
-        )
-
-
-        if not transactions:
-
-            st.error(
-                "❌ No transactions found."
-            )
-
-            st.stop()
-
-
-    # ========================================================
-    # NORMALIZE HOP MAP
-    # ========================================================
-
-    normalized_wallet_hops = {}
-
-    for address, hop in wallet_hops.items():
-
-        normalized_wallet_hops[
-            str(address).lower()
-        ] = hop
-
-    wallet_hops = normalized_wallet_hops
-
-
-    # ========================================================
-    # ABNORMAL DETECTION
-    # ========================================================
-
-    abnormal_alerts = detect_abnormal_transactions(
-        transactions
-    )
-
-    abnormal_hashes = set()
-
-    for alert in abnormal_alerts:
-
-        tx_hash = alert.get(
-            "hash",
-            ""
-        )
-
-        abnormal_hashes.add(
-            tx_hash
-        )
-
-
-    # ========================================================
-    # VASP DETECTION
-    # ========================================================
-
-    vasp_results = detect_vasp(
-        transactions
-    )
+    start_wallet = start_wallet.lower()
 
     vasp_addresses = set()
 
     for vasp in vasp_results:
 
-        address = str(
-            vasp.get(
-                "address",
-                ""
-            )
+        address = vasp.get(
+            "address",
+            ""
         ).lower()
 
-        vasp_addresses.add(
-            address
-        )
+        if address:
+            vasp_addresses.add(address)
 
-
-    # ========================================================
-    # INVESTIGATION OVERVIEW
-    # ========================================================
-
-    st.header(
-        "📊 Investigation Overview"
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Transactions",
-        len(transactions)
-    )
-
-    c2.metric(
-        "Connected Wallets",
-        len(connected_wallets)
-    )
-
-    c3.metric(
-        "Maximum Hop",
-        actual_max_hop
-    )
-
-    c4.metric(
-        "Abnormal Alerts",
-        len(abnormal_alerts)
-    )
-
-
-    # ========================================================
-    # TRANSACTION TIMELINE
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "⏱️ Transaction Timeline"
-    )
-
-    st.caption(
-        "Chronological reconstruction of observed fund movements."
-    )
-
-
-    timeline_data = []
+    # -----------------------------------------------------
+    # Add nodes
+    # -----------------------------------------------------
 
     for tx in transactions:
 
-        timestamp = tx.get(
-            "timeStamp",
-            tx.get(
-                "timestamp",
-                ""
-            )
-        )
+        sender = tx.get(
+            "from",
+            ""
+        ).lower()
 
-        hop = get_transaction_hop(
-            tx,
-            wallet_hops,
-            wallet_address
-        )
+        receiver = tx.get(
+            "to",
+            ""
+        ).lower()
 
-        indicator = get_indicator(
-            tx,
-            abnormal_hashes,
-            vasp_addresses,
-            wallet_hops
-        )
+        if sender:
+            graph.add_node(sender)
 
+        if receiver:
+            graph.add_node(receiver)
 
-        timeline_data.append({
+    # Ensure reported wallet exists
+    graph.add_node(start_wallet)
 
-            "Time":
-                format_timestamp(timestamp),
-
-            "From":
-                short_address(
-                    tx.get(
-                        "from",
-                        "Unknown"
-                    )
-                ),
-
-            "To":
-                short_address(
-                    tx.get(
-                        "to",
-                        "Unknown"
-                    )
-                ),
-
-            "Value":
-                tx.get(
-                    "value",
-                    0
-                ),
-
-            "Asset":
-                tx.get(
-                    "asset",
-                    "ETH"
-                ),
-
-            "Hop":
-                hop,
-
-            "Indicator":
-                indicator,
-
-            "Transaction":
-                short_address(
-                    tx.get(
-                        "hash",
-                        ""
-                    )
-                )
-        })
-
-
-    if timeline_data:
-
-        timeline_df = pd.DataFrame(
-            timeline_data
-        )
-
-
-        st.dataframe(
-            timeline_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-    else:
-
-        st.info(
-            "No timeline data available."
-        )
-
-
-    # ========================================================
-    # ABNORMAL TRANSACTIONS
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "🚨 Abnormal Transaction Detection"
-    )
-
-
-    if abnormal_alerts:
-
-        alert_df = pd.DataFrame(
-            abnormal_alerts
-        )
-
-        st.dataframe(
-            alert_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-    else:
-
-        st.success(
-            "No abnormal transactions detected."
-        )
-
-
-    # ========================================================
-    # VASP ASSOCIATION
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "🏦 Potential VASP Association"
-    )
-
-
-    if vasp_results:
-
-        vasp_df = pd.DataFrame(
-            vasp_results
-        )
-
-        st.dataframe(
-            vasp_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-    else:
-
-        st.info(
-            "No potential VASP association identified."
-        )
-
-
-    # ========================================================
-    # PATTERN DETECTION
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "🧠 Detected Blockchain Patterns"
-    )
-
-
-    patterns = []
-
-    senders = {}
-    receivers = {}
-
+    # -----------------------------------------------------
+    # Add edges
+    # -----------------------------------------------------
 
     for tx in transactions:
 
-        sender = str(
-            tx.get(
-                "from",
-                ""
-            )
+        sender = tx.get(
+            "from",
+            ""
         ).lower()
 
-        receiver = str(
-            tx.get(
-                "to",
-                ""
-            )
+        receiver = tx.get(
+            "to",
+            ""
         ).lower()
-
-
-        senders[sender] = (
-            senders.get(
-                sender,
-                0
-            ) + 1
-        )
-
-        receivers[receiver] = (
-            receivers.get(
-                receiver,
-                0
-            ) + 1
-        )
-
-
-    if any(
-        count >= 3
-        for count in senders.values()
-    ):
-
-        patterns.append(
-            "Fund splitting detected."
-        )
-
-
-    if any(
-        count >= 3
-        for count in receivers.values()
-    ):
-
-        patterns.append(
-            "Fund consolidation detected."
-        )
-
-
-    if actual_max_hop >= 2:
-
-        patterns.append(
-            "Multi-hop fund movement detected."
-        )
-
-
-    if vasp_results:
-
-        patterns.append(
-            "Potential VASP association detected."
-        )
-
-
-    if patterns:
-
-        for pattern in patterns:
-
-            st.warning(
-                f"⚠️ {pattern}"
-            )
-
-    else:
-
-        st.success(
-            "No major predefined patterns detected."
-        )
-
-
-    # ========================================================
-    # EXPLAINABLE RISK SCORE
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "📈 Explainable Risk Assessment"
-    )
-
-
-    risk_factors = []
-
-    risk_score = 0
-
-
-    # Transaction activity
-
-    if len(transactions) > 100:
-
-        score = 25
-
-    elif len(transactions) > 50:
-
-        score = 15
-
-    else:
-
-        score = 0
-
-
-    risk_score += score
-
-    risk_factors.append({
-
-        "Factor":
-            "Transaction Activity",
-
-        "Score":
-            score,
-
-        "Reason":
-            f"{len(transactions)} transactions analyzed"
-    })
-
-
-    # Connected wallets
-
-    if len(connected_wallets) > 20:
-
-        score = 25
-
-    elif len(connected_wallets) > 10:
-
-        score = 15
-
-    else:
-
-        score = 0
-
-
-    risk_score += score
-
-    risk_factors.append({
-
-        "Factor":
-            "Connected Wallets",
-
-        "Score":
-            score,
-
-        "Reason":
-            f"{len(connected_wallets)} connected wallets"
-    })
-
-
-    # Abnormal activity
-
-    if len(abnormal_alerts) > 0:
-
-        score = 20
-
-    else:
-
-        score = 0
-
-
-    risk_score += score
-
-    risk_factors.append({
-
-        "Factor":
-            "Abnormal Transactions",
-
-        "Score":
-            score,
-
-        "Reason":
-            f"{len(abnormal_alerts)} abnormal alert(s)"
-    })
-
-
-    # Multi-hop
-
-    if actual_max_hop >= 2:
-
-        score = 15
-
-    else:
-
-        score = 0
-
-
-    risk_score += score
-
-    risk_factors.append({
-
-        "Factor":
-            "Multi-Hop Movement",
-
-        "Score":
-            score,
-
-        "Reason":
-            f"Trace depth: {actual_max_hop} hop(s)"
-    })
-
-
-    # VASP
-
-    if vasp_results:
-
-        score = 15
-
-    else:
-
-        score = 0
-
-
-    risk_score += score
-
-    risk_factors.append({
-
-        "Factor":
-            "Potential VASP Association",
-
-        "Score":
-            score,
-
-        "Reason":
-            f"{len(vasp_results)} registry match(es)"
-    })
-
-
-    risk_score = min(
-        risk_score,
-        100
-    )
-
-
-    if risk_score >= 70:
-
-        risk_level = "HIGH"
-
-    elif risk_score >= 40:
-
-        risk_level = "MEDIUM"
-
-    else:
-
-        risk_level = "LOW"
-
-
-    c1, c2 = st.columns(2)
-
-
-    c1.metric(
-        "Overall Risk Score",
-        f"{risk_score}/100"
-    )
-
-    c2.metric(
-        "Risk Level",
-        risk_level
-    )
-
-
-    st.subheader(
-        "🔍 Why this score?"
-    )
-
-
-    risk_df = pd.DataFrame(
-        risk_factors
-    )
-
-    st.dataframe(
-        risk_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-    # ========================================================
-    # FUND FLOW NETWORK V2
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "🕸️ Fund Flow Network V2"
-    )
-
-    st.caption(
-        "Visual reconstruction of the reported wallet's "
-        "observed transaction network."
-    )
-
-
-    # --------------------------------------------------------
-    # LEGEND
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        **Legend**
-
-        🔴 Reported Wallet &nbsp;&nbsp;
-        🟡 Hop 1 &nbsp;&nbsp;
-        🟠 Hop 2 &nbsp;&nbsp;
-        🟣 Hop 3+ &nbsp;&nbsp;
-        🏦 Potential VASP
-        """
-    )
-
-
-    # --------------------------------------------------------
-    # CREATE NETWORK
-    # --------------------------------------------------------
-
-    net = Network(
-        height="650px",
-        width="100%",
-        directed=True,
-        bgcolor="#ffffff",
-        font_color="#000000"
-    )
-
-
-    net.set_options(
-        """
-        {
-            "nodes": {
-                "font": {
-                    "size": 16
-                },
-                "borderWidth": 2
-            },
-
-            "edges": {
-                "arrows": {
-                    "to": {
-                        "enabled": true,
-                        "scaleFactor": 0.7
-                    }
-                },
-
-                "smooth": {
-                    "enabled": true,
-                    "type": "dynamic"
-                },
-
-                "font": {
-                    "size": 11
-                }
-            },
-
-            "physics": {
-                "enabled": true,
-
-                "barnesHut": {
-                    "gravitationalConstant": -3000,
-                    "centralGravity": 0.2,
-                    "springLength": 180,
-                    "springConstant": 0.04,
-                    "damping": 0.09
-                },
-
-                "stabilization": {
-                    "enabled": true,
-                    "iterations": 200
-                }
-            },
-
-            "interaction": {
-                "hover": true,
-                "navigationButtons": true,
-                "keyboard": true
-            }
-        }
-        """
-    )
-
-
-    # --------------------------------------------------------
-    # ADD NODES + EDGES
-    # --------------------------------------------------------
-
-    added_nodes = set()
-
-    max_graph_transactions = 100
-
-
-    for tx in transactions[:max_graph_transactions]:
-
-        sender = str(
-            tx.get(
-                "from",
-                ""
-            )
-        ).strip()
-
-        receiver = str(
-            tx.get(
-                "to",
-                ""
-            )
-        ).strip()
-
 
         if not sender or not receiver:
-
             continue
-
-
-        sender_color, sender_type, sender_hop = get_node_info(
-            sender,
-            wallet_hops,
-            wallet_address,
-            vasp_addresses
-        )
-
-
-        receiver_color, receiver_type, receiver_hop = get_node_info(
-            receiver,
-            wallet_hops,
-            wallet_address,
-            vasp_addresses
-        )
-
-
-        # ----------------------------------------------------
-        # Sender Node
-        # ----------------------------------------------------
-
-        if sender not in added_nodes:
-
-            sender_title = (
-                f"<b>{sender_type}</b><br>"
-                f"Address: {sender}<br>"
-                f"Hop: {sender_hop}"
-            )
-
-
-            net.add_node(
-
-                sender,
-
-                label=(
-                    f"{sender_color} "
-                    f"{short_address(sender)}"
-                ),
-
-                title=sender_title,
-
-                shape="dot",
-
-                size=28 if sender_hop == 0 else 20
-            )
-
-
-            added_nodes.add(
-                sender
-            )
-
-
-        # ----------------------------------------------------
-        # Receiver Node
-        # ----------------------------------------------------
-
-        if receiver not in added_nodes:
-
-            receiver_title = (
-                f"<b>{receiver_type}</b><br>"
-                f"Address: {receiver}<br>"
-                f"Hop: {receiver_hop}"
-            )
-
-
-            net.add_node(
-
-                receiver,
-
-                label=(
-                    f"{receiver_color} "
-                    f"{short_address(receiver)}"
-                ),
-
-                title=receiver_title,
-
-                shape="dot",
-
-                size=28 if receiver_hop == 0 else 20
-            )
-
-
-            added_nodes.add(
-                receiver
-            )
-
-
-        # ----------------------------------------------------
-        # EDGE
-        # ----------------------------------------------------
 
         value = tx.get(
             "value",
@@ -1276,249 +360,858 @@ if analyze_button:
             ""
         )
 
-
-        edge_title = (
-            f"<b>Fund Transfer</b><br>"
-            f"Value: {value} {asset}<br>"
-            f"Transaction: {tx_hash}"
+        edge_label = (
+            f"{value:.4f} {asset}"
+            if isinstance(value, float)
+            else f"{value} {asset}"
         )
 
+        title = (
+            f"Transaction\n"
+            f"From: {sender}\n"
+            f"To: {receiver}\n"
+            f"Value: {edge_label}\n"
+            f"Hash: {tx_hash}"
+        )
+
+        if graph.has_edge(sender, receiver):
+
+            graph[sender][receiver]["weight"] += 1
+
+        else:
+
+            graph.add_edge(
+                sender,
+                receiver,
+                label=edge_label,
+                title=title,
+                weight=1
+            )
+
+    # -----------------------------------------------------
+    # PyVis
+    # -----------------------------------------------------
+
+    net = Network(
+        height="650px",
+        width="100%",
+        directed=True,
+        bgcolor="#ffffff",
+        font_color="#111111"
+    )
+
+    net.set_options(
+        """
+        {
+          "nodes": {
+            "shape": "dot",
+            "size": 22,
+            "font": {
+              "size": 14
+            }
+          },
+          "edges": {
+            "arrows": {
+              "to": {
+                "enabled": true
+              }
+            },
+            "font": {
+              "size": 10,
+              "align": "middle"
+            },
+            "smooth": {
+              "enabled": true,
+              "type": "dynamic"
+            }
+          },
+          "physics": {
+            "enabled": true,
+            "stabilization": {
+              "iterations": 200
+            }
+          }
+        }
+        """
+    )
+
+    # -----------------------------------------------------
+    # Nodes
+    # -----------------------------------------------------
+
+    for node in graph.nodes:
+
+        role, hop = get_node_info(
+            node,
+            wallet_hops,
+            start_wallet,
+            vasp_addresses
+        )
+
+        display_address = (
+            node[:8] + "..." + node[-6:]
+            if len(node) > 16
+            else node
+        )
+
+        label = (
+            f"{role}\n"
+            f"{display_address}"
+        )
+
+        title = (
+            f"Role: {role}<br>"
+            f"Address: {node}<br>"
+            f"Hop: {hop}"
+        )
+
+        # Actual node color
+        if node == start_wallet:
+            node_color = "#ff4b4b"
+
+        elif node in vasp_addresses:
+            node_color = "#9b59b6"
+
+        elif hop == 1:
+            node_color = "#f1c40f"
+
+        elif hop == 2:
+            node_color = "#e67e22"
+
+        elif isinstance(hop, int) and hop >= 3:
+            node_color = "#8e44ad"
+
+        else:
+            node_color = "#95a5a6"
+
+        net.add_node(
+            node,
+            label=label,
+            title=title,
+            color=node_color
+        )
+
+    # -----------------------------------------------------
+    # Edges
+    # -----------------------------------------------------
+
+    for source, target, data in graph.edges(
+        data=True
+    ):
 
         net.add_edge(
-
-            sender,
-
-            receiver,
-
-            title=edge_title,
-
-            label=f"{value} {asset}",
-
-            arrows="to"
+            source,
+            target,
+            label=data.get(
+                "label",
+                ""
+            ),
+            title=data.get(
+                "title",
+                ""
+            ),
+            width=min(
+                1 + data.get("weight", 1),
+                6
+            )
         )
 
+    return net, graph
 
-    # --------------------------------------------------------
-    # RENDER GRAPH
-    # --------------------------------------------------------
 
-    if added_nodes:
+# =========================================================
+# INVESTIGATION
+# =========================================================
 
-        graph_path = None
+if analyze_button:
 
+    if not wallet_address:
+
+        st.error(
+            "Please enter a reported wallet address."
+        )
+
+    else:
+
+        try:
+
+            with st.spinner(
+                "🔍 Collecting blockchain data and tracing fund flow..."
+            ):
+
+                result = trace_wallet(
+                    wallet_address,
+                    chain=chain,
+                    max_hop=max_hop
+                )
+
+            st.session_state.analysis_result = result
+
+            transactions = result.get(
+                "transactions",
+                []
+            )
+
+            connected_wallets = result.get(
+                "wallets",
+                []
+            )
+
+            wallet_hops = result.get(
+                "wallet_hops",
+                {}
+            )
+
+            # -------------------------------------------------
+            # Transaction DNA
+            # -------------------------------------------------
+
+            dna = analyze_transaction_dna(
+                transactions,
+                wallet_address
+            )
+
+            st.session_state.dna_result = dna
+
+            # -------------------------------------------------
+            # Abnormal transactions
+            # -------------------------------------------------
+
+            abnormal_alerts = detect_abnormal_transactions(
+                transactions
+            )
+
+            st.session_state.abnormal_alerts = (
+                abnormal_alerts
+            )
+
+            # -------------------------------------------------
+            # VASP
+            # -------------------------------------------------
+
+            vasp_results = detect_vasp(
+                transactions
+            )
+
+            st.session_state.vasp_results = (
+                vasp_results
+            )
+
+            st.success(
+                "✅ Blockchain investigation completed."
+            )
+
+        except Exception as e:
+
+            st.error(
+                f"❌ Investigation failed: {e}"
+            )
+
+
+# =========================================================
+# DISPLAY RESULTS
+# =========================================================
+
+result = st.session_state.analysis_result
+
+
+if result:
+
+    transactions = result.get(
+        "transactions",
+        []
+    )
+
+    connected_wallets = result.get(
+        "wallets",
+        []
+    )
+
+    wallet_hops = result.get(
+        "wallet_hops",
+        {}
+    )
+
+    dna = st.session_state.dna_result or {}
+
+    abnormal_alerts = (
+        st.session_state.abnormal_alerts or []
+    )
+
+    vasp_results = (
+        st.session_state.vasp_results or []
+    )
+
+    # =====================================================
+    # RISK SCORE
+    # =====================================================
+
+    risk_score, risk_level, risk_reasons = (
+        calculate_risk(
+            transaction_count=len(transactions),
+            connected_wallets=len(
+                connected_wallets
+            ),
+            rapid_movements=dna.get(
+                "rapid_movements",
+                0
+            ),
+            abnormal_alerts=abnormal_alerts,
+            vasp_results=vasp_results,
+            fan_in=dna.get(
+                "fan_in",
+                0
+            ),
+            fan_out=dna.get(
+                "fan_out",
+                0
+            ),
+            max_hop=result.get(
+                "max_hop",
+                0
+            )
+        )
+    )
+
+    # =====================================================
+    # OVERVIEW
+    # =====================================================
+
+    st.header("📊 Investigation Overview")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Transactions",
+            len(transactions)
+        )
+
+    with col2:
+
+        st.metric(
+            "Connected Wallets",
+            len(connected_wallets)
+        )
+
+    with col3:
+
+        st.metric(
+            "Max Hop",
+            result.get(
+                "max_hop",
+                0
+            )
+        )
+
+    with col4:
+
+        st.metric(
+            "Risk Score",
+            f"{risk_score}/100"
+        )
+
+    # =====================================================
+    # RISK LEVEL
+    # =====================================================
+
+    if risk_level == "HIGH":
+
+        st.error(
+            f"🔴 Risk Level: {risk_level}"
+        )
+
+    elif risk_level == "MEDIUM":
+
+        st.warning(
+            f"🟠 Risk Level: {risk_level}"
+        )
+
+    else:
+
+        st.success(
+            f"🟢 Risk Level: {risk_level}"
+        )
+
+    if risk_reasons:
+
+        st.markdown(
+            "### 🧠 Risk Factors"
+        )
+
+        for reason in risk_reasons:
+
+            st.write(
+                f"• {reason}"
+            )
+
+    st.divider()
+
+    # =====================================================
+    # TRANSACTION DNA
+    # =====================================================
+
+    st.header("🧬 Transaction DNA")
+
+    dna_col1, dna_col2, dna_col3 = (
+        st.columns(3)
+    )
+
+    with dna_col1:
+
+        st.metric(
+            "Transactions",
+            dna.get(
+                "transaction_count",
+                0
+            )
+        )
+
+    with dna_col2:
+
+        st.metric(
+            "Average Transfer",
+            f'{dna.get("average_transfer", 0):.4f} ETH'
+        )
+
+    with dna_col3:
+
+        st.metric(
+            "Total Volume",
+            f'{dna.get("total_volume", 0):.4f} ETH'
+        )
+
+    dna_col1, dna_col2, dna_col3 = (
+        st.columns(3)
+    )
+
+    with dna_col1:
+
+        st.metric(
+            "Unique Senders",
+            dna.get(
+                "unique_senders",
+                0
+            )
+        )
+
+    with dna_col2:
+
+        st.metric(
+            "Unique Receivers",
+            dna.get(
+                "unique_receivers",
+                0
+            )
+        )
+
+    with dna_col3:
+
+        st.metric(
+            "Rapid Movements",
+            dna.get(
+                "rapid_movements",
+                0
+            )
+        )
+
+    st.markdown(
+        "### 🔀 Wallet Behavior"
+    )
+
+    behavior_col1, behavior_col2 = (
+        st.columns(2)
+    )
+
+    with behavior_col1:
+
+        st.metric(
+            "Fan-In",
+            dna.get(
+                "fan_in",
+                0
+            )
+        )
+
+    with behavior_col2:
+
+        st.metric(
+            "Fan-Out",
+            dna.get(
+                "fan_out",
+                0
+            )
+        )
+
+    st.markdown(
+        "### 🚨 Behavioral Indicators"
+    )
+
+    indicators = dna.get(
+        "behavior_indicators",
+        []
+    )
+
+    if indicators:
+
+        for indicator in indicators:
+
+            st.warning(
+                f"⚠️ {indicator}"
+            )
+
+    else:
+
+        st.success(
+            "No major predefined behavioral indicators detected."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # FUND FLOW V2
+    # =====================================================
+
+    st.header("🌐 Fund Flow Network V2")
+
+    st.markdown(
+        """
+        **Legend**
+
+        🔴 Reported Wallet &nbsp;&nbsp;
+        🟡 Hop 1 &nbsp;&nbsp;
+        🟠 Hop 2 &nbsp;&nbsp;
+        🟣 Hop 3+ &nbsp;&nbsp;
+        🏦 Potential VASP
+        """
+    )
+
+    net, graph = build_fund_flow_graph(
+        transactions[:100],
+        wallet_address,
+        wallet_hops,
+        vasp_results
+    )
+
+    # Save temporary HTML
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".html"
+    ) as tmp_file:
+
+        graph_path = tmp_file.name
+
+    net.save_graph(
+        graph_path
+    )
+
+    with open(
+        graph_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        graph_html = f.read()
+
+    components.html(
+        graph_html,
+        height=680,
+        scrolling=True
+    )
+
+    try:
+
+        os.unlink(
+            graph_path
+        )
+
+    except:
+
+        pass
+
+    st.info(
+        f"""
+        **Flow interpretation:**
+
+        🔴 Reported wallet → starting point
+
+        🟡 Hop 1 → directly connected wallets
+
+        🟠 Hop 2 → wallets reached through another wallet
+
+        🟣 Hop 3+ → deeper network connections
+
+        🏦 Potential VASP → wallet matching the available registry
+        """
+
+    )
+
+    st.write(
+        f"**Graph nodes:** {graph.number_of_nodes()}  |  "
+        f"**Graph edges:** {graph.number_of_edges()}  |  "
+        f"**Transactions displayed:** {min(len(transactions), 100)}"
+    )
+
+    st.divider()
+
+    # =====================================================
+    # DETECTED PATTERNS
+    # =====================================================
+
+    st.header("🧩 Detected Fund-Flow Patterns")
+
+    patterns = detect_patterns(
+        transactions,
+        wallet_address,
+        wallet_hops
+    )
+
+    if patterns:
+
+        for pattern in patterns:
+
+            st.warning(
+                f"⚠️ {pattern}"
+            )
+
+    else:
+
+        st.success(
+            "No major predefined fund-flow patterns detected."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # ABNORMAL TRANSACTIONS
+    # =====================================================
+
+    st.header("🚨 Abnormal Transaction Analysis")
+
+    if abnormal_alerts:
+
+        abnormal_df = pd.DataFrame(
+            abnormal_alerts
+        )
+
+        st.dataframe(
+            abnormal_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+
+        st.success(
+            "No abnormal transaction indicators detected."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # VASP ASSOCIATION
+    # =====================================================
+
+    st.header("🏦 Potential VASP Association")
+
+    if vasp_results:
+
+        vasp_df = pd.DataFrame(
+            vasp_results
+        )
+
+        st.dataframe(
+            vasp_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.warning(
+            "VASP matches are analytical associations based "
+            "on the available registry and require independent verification."
+        )
+
+    else:
+
+        st.info(
+            "No potential VASP association identified."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # TRANSACTION TABLE
+    # =====================================================
+
+    st.header("📋 Transaction Evidence")
+
+    if transactions:
+
+        display_transactions = []
+
+        for tx in transactions[:100]:
+
+            display_transactions.append({
+                "Transaction": tx.get(
+                    "hash",
+                    ""
+                ),
+                "From": tx.get(
+                    "from",
+                    ""
+                ),
+                "To": tx.get(
+                    "to",
+                    ""
+                ),
+                "Value": tx.get(
+                    "value",
+                    0
+                ),
+                "Asset": tx.get(
+                    "asset",
+                    "ETH"
+                ),
+                "Timestamp": tx.get(
+                    "timeStamp",
+                    ""
+                )
+            })
+
+        tx_df = pd.DataFrame(
+            display_transactions
+        )
+
+        st.dataframe(
+            tx_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        if len(transactions) > 100:
+
+            st.info(
+                f"Showing 100 of {len(transactions)} transactions."
+            )
+
+    else:
+
+        st.info(
+            "No transactions available."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # INVESTIGATION SUMMARY
+    # =====================================================
+
+    st.header("📝 Investigation Summary")
+
+    summary_col1, summary_col2 = (
+        st.columns(2)
+    )
+
+    with summary_col1:
+
+        st.write(
+            f"**Reported Wallet:** `{wallet_address}`"
+        )
+
+        st.write(
+            f"**Blockchain:** {chain}"
+        )
+
+        st.write(
+            f"**Transactions Analyzed:** {len(transactions)}"
+        )
+
+        st.write(
+            f"**Connected Wallets:** {len(connected_wallets)}"
+        )
+
+    with summary_col2:
+
+        st.write(
+            f"**Maximum Hop:** {max_hop}"
+        )
+
+        st.write(
+            f"**Risk Score:** {risk_score}/100"
+        )
+
+        st.write(
+            f"**Risk Level:** {risk_level}"
+        )
+
+        st.write(
+            f"**Potential VASP Matches:** {len(vasp_results)}"
+        )
+
+    st.divider()
+
+    # =====================================================
+    # PDF REPORT
+    # =====================================================
+
+    st.header("📄 Investigation Report")
+
+    if st.button(
+        "📥 Generate PDF Report",
+        use_container_width=True
+    ):
 
         try:
 
             with tempfile.NamedTemporaryFile(
                 delete=False,
-                suffix=".html"
-            ) as temp_graph:
+                suffix=".pdf"
+            ) as pdf_file:
 
-                graph_path = temp_graph.name
+                pdf_path = pdf_file.name
 
-
-            net.write_html(
-                graph_path,
-                open_browser=False
+            generate_pdf_report(
+                file_path=pdf_path,
+                wallet_address=wallet_address,
+                chain=chain,
+                transactions=transactions,
+                connected_wallets=connected_wallets,
+                max_hop=max_hop,
+                abnormal_alerts=abnormal_alerts,
+                vasp_results=vasp_results,
+                risk_score=risk_score,
+                risk_level=risk_level,
+                patterns=patterns
             )
-
 
             with open(
-                graph_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
+                pdf_path,
+                "rb"
+            ) as file:
 
-                graph_html = f.read()
-
-
-            html(
-                graph_html,
-                height=680,
-                scrolling=True
-            )
-
+                st.download_button(
+                    label="⬇️ Download Investigation Report",
+                    data=file,
+                    file_name="CryptoShield_Investigation_Report.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
         except Exception as e:
 
             st.error(
-                f"Fund flow graph failed: {e}"
+                f"PDF generation failed: {e}"
             )
 
 
-        finally:
-
-            if (
-                graph_path
-                and os.path.exists(graph_path)
-            ):
-
-                os.remove(
-                    graph_path
-                )
-
-
-    else:
-
-        st.info(
-            "No transaction relationships available "
-            "to build the graph."
-        )
-
-
-    # ========================================================
-    # FLOW INTERPRETATION
-    # ========================================================
-
-    st.subheader(
-        "🔎 Flow Interpretation"
-    )
-
-
-    st.write(
-        f"""
-The reported wallet is treated as **Hop 0**.
-Connected wallets are progressively mapped as **Hop 1, Hop 2,
-and Hop 3+** based on the available trace results.
-
-The graph currently contains **{len(added_nodes)} observed nodes**
-and up to **{min(len(transactions), max_graph_transactions)} displayed transactions**.
-"""
-    )
-
-
-    # ========================================================
-    # INVESTIGATION SUMMARY
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "📝 Investigation Summary"
-    )
-
-
-    st.write(
-        f"""
-**Reported Wallet:** `{wallet_address}`
-
-**Blockchain:** {chain}
-
-**Transactions Analyzed:** {len(transactions)}
-
-**Connected Wallets:** {len(connected_wallets)}
-
-**Maximum Trace Depth:** {actual_max_hop} hops
-
-**Abnormal Alerts:** {len(abnormal_alerts)}
-
-**Potential VASP Matches:** {len(vasp_results)}
-
-**Analytical Risk Score:** {risk_score}/100
-
-**Risk Level:** {risk_level}
-"""
-    )
-
-
-    st.info(
-        "⚠️ CryptoShield provides analytical intelligence only. "
-        "A risk score or suspicious pattern does not establish "
-        "criminal activity or identify a person as guilty."
-    )
-
-
-    # ========================================================
-    # PDF REPORT
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "📄 Investigation Report"
-    )
-
-
-    pdf_path = None
-
-
-    try:
-
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".pdf"
-        ) as temp_file:
-
-            pdf_path = temp_file.name
-
-
-        generate_pdf_report(
-
-            file_path=pdf_path,
-
-            wallet_address=wallet_address,
-
-            chain=chain,
-
-            transactions=transactions,
-
-            connected_wallets=connected_wallets,
-
-            max_hop=actual_max_hop,
-
-            abnormal_alerts=abnormal_alerts,
-
-            vasp_results=vasp_results,
-
-            risk_score=risk_score,
-
-            risk_level=risk_level,
-
-            patterns=patterns
-        )
-
-
-        with open(
-            pdf_path,
-            "rb"
-        ) as pdf_file:
-
-            pdf_data = pdf_file.read()
-
-
-        st.download_button(
-
-            label=(
-                "📥 Download Investigation "
-                "Report PDF"
-            ),
-
-            data=pdf_data,
-
-            file_name=(
-                "CryptoShield_Investigation_Report.pdf"
-            ),
-
-            mime="application/pdf",
-
-            use_container_width=True
-        )
-
-
-    except Exception as e:
-
-        st.error(
-            f"PDF generation failed: {e}"
-        )
-
-
-    finally:
-
-        if (
-            pdf_path
-            and os.path.exists(pdf_path)
-        ):
-
-            os.remove(
-                pdf_path
-            )
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.divider()
+
+st.caption(
+    "CryptoShield — Blockchain Fraud Intelligence System | "
+    "DINO: Digital Investigation & Network Observatory"
+)

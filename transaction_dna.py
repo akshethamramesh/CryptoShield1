@@ -2,420 +2,145 @@ from collections import Counter
 from datetime import datetime
 
 
-def parse_timestamp(timestamp):
+def analyze_transaction_dna(transactions, start_wallet):
+    """
+    Generates a behavioral profile for a wallet based on
+    the transactions collected by CryptoShield.
+    """
 
-    if not timestamp:
-        return None
+    if not transactions:
+        return {
+            "transaction_count": 0,
+            "average_transfer": 0,
+            "total_volume": 0,
+            "unique_senders": 0,
+            "unique_receivers": 0,
+            "fan_in": 0,
+            "fan_out": 0,
+            "rapid_movements": 0,
+            "active_hours": {},
+            "behavior_indicators": []
+        }
 
-    try:
+    start_wallet = start_wallet.lower()
 
-        if isinstance(timestamp, (int, float)):
-            return datetime.fromtimestamp(timestamp)
+    senders = Counter()
+    receivers = Counter()
 
-        return datetime.fromisoformat(
-            str(timestamp).replace("Z", "+00:00")
-        )
-
-    except Exception:
-        return None
-
-
-def calculate_transaction_dna(transactions, wallet):
-
-    wallet = wallet.lower()
-
-    incoming = []
-    outgoing = []
-
-    recipients = []
-    senders = []
+    total_volume = 0
+    valid_values = []
 
     timestamps = []
 
-    # -----------------------------------------
-    # COLLECT DATA
-    # -----------------------------------------
-
     for tx in transactions:
 
-        sender = str(
-            tx.get("from", "")
-        ).lower()
+        sender = tx.get("from", "").lower()
+        receiver = tx.get("to", "").lower()
 
-        receiver = str(
-            tx.get("to", "")
-        ).lower()
+        if sender:
+            senders[sender] += 1
+
+        if receiver:
+            receivers[receiver] += 1
 
         try:
             value = float(tx.get("value", 0))
         except:
             value = 0
 
-        # Ignore zero-value transactions
-        # for financial behaviour analysis
-        if value <= 0:
-            continue
-
-        if sender == wallet:
-
-            outgoing.append(tx)
-
-            if receiver:
-                recipients.append(receiver)
-
-        if receiver == wallet:
-
-            incoming.append(tx)
-
-            if sender:
-                senders.append(sender)
-
-        timestamp = parse_timestamp(
-            tx.get("timestamp")
-        )
-
-        if timestamp:
-            timestamps.append(timestamp)
-
-    # -----------------------------------------
-    # COUNTS
-    # -----------------------------------------
-
-    total_transactions = (
-        len(incoming) +
-        len(outgoing)
-    )
-
-    unique_recipients = len(
-        set(recipients)
-    )
-
-    unique_senders = len(
-        set(senders)
-    )
-
-    # -----------------------------------------
-    # AMOUNTS
-    # -----------------------------------------
-
-    amounts = []
-
-    for tx in outgoing:
+        if value > 0:
+            total_volume += value
+            valid_values.append(value)
 
         try:
-
-            value = float(
-                tx.get("value", 0)
-            )
-
-            if value > 0:
-                amounts.append(value)
-
+            timestamp = int(tx.get("timeStamp", 0))
+            if timestamp:
+                timestamps.append(timestamp)
         except:
             pass
 
-    if amounts:
+    transaction_count = len(transactions)
 
-        average_amount = (
-            sum(amounts) /
-            len(amounts)
-        )
+    average_transfer = (
+        total_volume / len(valid_values)
+        if valid_values
+        else 0
+    )
 
-        maximum_amount = max(amounts)
+    # Wallet-specific connections
+    outgoing = set()
+    incoming = set()
 
-    else:
+    for tx in transactions:
 
-        average_amount = 0
-        maximum_amount = 0
+        sender = tx.get("from", "").lower()
+        receiver = tx.get("to", "").lower()
 
-    # -----------------------------------------
-    # TIME ANALYSIS
-    # -----------------------------------------
+        if sender == start_wallet and receiver:
+            outgoing.add(receiver)
 
+        if receiver == start_wallet and sender:
+            incoming.add(sender)
+
+    fan_out = len(outgoing)
+    fan_in = len(incoming)
+
+    # Rapid movement detection
     timestamps.sort()
 
-    time_gaps = []
+    rapid_movements = 0
 
-    for i in range(
-        1,
-        len(timestamps)
-    ):
+    for i in range(1, len(timestamps)):
+        if timestamps[i] - timestamps[i - 1] <= 300:
+            rapid_movements += 1
 
-        gap = (
-            timestamps[i] -
-            timestamps[i - 1]
-        ).total_seconds()
+    # Active hours
+    active_hours = Counter()
 
-        if gap >= 0:
-            time_gaps.append(gap)
+    for timestamp in timestamps:
+        try:
+            hour = datetime.fromtimestamp(timestamp).hour
+            active_hours[hour] += 1
+        except:
+            pass
 
-    if time_gaps:
+    # Behavioral indicators
+    indicators = []
 
-        average_time_gap = (
-            sum(time_gaps) /
-            len(time_gaps)
+    if fan_out >= 5:
+        indicators.append(
+            "High fan-out: funds moved to multiple destinations"
         )
 
-    else:
-
-        average_time_gap = 0
-
-    # -----------------------------------------
-    # RAPID ACTIVITY
-    # -----------------------------------------
-
-    rapid_activity = False
-
-    for i in range(
-        len(timestamps)
-    ):
-
-        count = 1
-
-        for j in range(
-            i + 1,
-            len(timestamps)
-        ):
-
-            difference = (
-                timestamps[j] -
-                timestamps[i]
-            ).total_seconds()
-
-            if difference <= 60:
-                count += 1
-            else:
-                break
-
-        if count >= 3:
-
-            rapid_activity = True
-            break
-
-    # -----------------------------------------
-    # RARE DESTINATIONS
-    # -----------------------------------------
-
-    recipient_counts = Counter(
-        recipients
-    )
-
-    rare_recipients = [
-
-        address
-
-        for address, count
-        in recipient_counts.items()
-
-        if count == 1
-    ]
-
-    # -----------------------------------------
-    # FUND SPLITTING
-    # -----------------------------------------
-
-    fund_splitting = (
-        len(set(recipients)) >= 3
-    )
-
-    # -----------------------------------------
-    # FUND CONSOLIDATION
-    # -----------------------------------------
-
-    fund_consolidation = (
-        len(set(senders)) >= 3
-    )
-
-    # -----------------------------------------
-    # ACTIVITY LEVEL
-    # -----------------------------------------
-
-    if total_transactions >= 100:
-
-        activity_level = "VERY HIGH"
-
-    elif total_transactions >= 50:
-
-        activity_level = "HIGH"
-
-    elif total_transactions >= 20:
-
-        activity_level = "MEDIUM"
-
-    else:
-
-        activity_level = "LOW"
-
-    # -----------------------------------------
-    # RECIPIENT PATTERN
-    # -----------------------------------------
-
-    if unique_recipients >= 20:
-
-        recipient_pattern = "VERY HIGH"
-
-    elif unique_recipients >= 10:
-
-        recipient_pattern = "HIGH"
-
-    elif unique_recipients >= 5:
-
-        recipient_pattern = "MEDIUM"
-
-    else:
-
-        recipient_pattern = "LOW"
-
-    # -----------------------------------------
-    # BEHAVIOUR SIGNALS
-    # -----------------------------------------
-
-    behaviour_signals = []
-
-    if rapid_activity:
-
-        behaviour_signals.append(
-            "Rapid transaction activity"
+    if fan_in >= 5:
+        indicators.append(
+            "High fan-in: funds received from multiple sources"
         )
 
-    if fund_splitting:
-
-        behaviour_signals.append(
-            "Fund splitting behaviour"
+    if rapid_movements >= 5:
+        indicators.append(
+            "Rapid fund movement detected"
         )
 
-    if fund_consolidation:
-
-        behaviour_signals.append(
-            "Fund consolidation behaviour"
+    if transaction_count >= 100:
+        indicators.append(
+            "High transaction activity"
         )
 
-    if len(rare_recipients) >= 3:
-
-        behaviour_signals.append(
-            "Multiple rare destinations"
-        )
-
-    if unique_recipients >= 10:
-
-        behaviour_signals.append(
-            "High recipient diversity"
-        )
-
-    # -----------------------------------------
-    # DNA SCORE
-    # -----------------------------------------
-
-    dna_score = 0
-
-    if rapid_activity:
-        dna_score += 25
-
-    if fund_splitting:
-        dna_score += 20
-
-    if fund_consolidation:
-        dna_score += 15
-
-    if len(rare_recipients) >= 3:
-        dna_score += 15
-
-    if unique_recipients >= 10:
-        dna_score += 15
-
-    if total_transactions >= 100:
-        dna_score += 10
-
-    dna_score = min(
-        dna_score,
-        100
-    )
-
-    # -----------------------------------------
-    # PROFILE
-    # -----------------------------------------
-
-    if dna_score >= 70:
-
-        behaviour_profile = (
-            "High-activity distribution pattern"
-        )
-
-    elif dna_score >= 40:
-
-        behaviour_profile = (
-            "Moderately irregular "
-            "transaction pattern"
-        )
-
-    else:
-
-        behaviour_profile = (
-            "Relatively stable "
-            "transaction pattern"
+    if len(valid_values) >= 5 and average_transfer > 5:
+        indicators.append(
+            "High average transfer value"
         )
 
     return {
-
-        "wallet": wallet,
-
-        "total_transactions":
-            total_transactions,
-
-        "incoming_transactions":
-            len(incoming),
-
-        "outgoing_transactions":
-            len(outgoing),
-
-        "unique_senders":
-            unique_senders,
-
-        "unique_recipients":
-            unique_recipients,
-
-        "average_amount":
-            round(
-                average_amount,
-                6
-            ),
-
-        "maximum_amount":
-            round(
-                maximum_amount,
-                6
-            ),
-
-        "average_time_gap_seconds":
-            round(
-                average_time_gap,
-                2
-            ),
-
-        "rare_recipients":
-            len(rare_recipients),
-
-        "rapid_activity":
-            rapid_activity,
-
-        "fund_splitting":
-            fund_splitting,
-
-        "fund_consolidation":
-            fund_consolidation,
-
-        "activity_level":
-            activity_level,
-
-        "recipient_pattern":
-            recipient_pattern,
-
-        "behaviour_signals":
-            behaviour_signals,
-
-        "dna_score":
-            dna_score,
-
-        "behaviour_profile":
-            behaviour_profile
+        "transaction_count": transaction_count,
+        "average_transfer": average_transfer,
+        "total_volume": total_volume,
+        "unique_senders": len(senders),
+        "unique_receivers": len(receivers),
+        "fan_in": fan_in,
+        "fan_out": fan_out,
+        "rapid_movements": rapid_movements,
+        "active_hours": dict(active_hours),
+        "behavior_indicators": indicators
     }
