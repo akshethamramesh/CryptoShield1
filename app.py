@@ -29,7 +29,10 @@ st.set_page_config(
 # ============================================================
 
 st.title("🛡️ CryptoShield")
-st.subheader("Blockchain Fraud Intelligence System")
+
+st.subheader(
+    "Blockchain Fraud Intelligence System"
+)
 
 st.write(
     "Analyze a reported cryptocurrency wallet, trace fund flows, "
@@ -44,7 +47,9 @@ st.divider()
 # SIDEBAR
 # ============================================================
 
-st.sidebar.header("⚙️ Investigation Settings")
+st.sidebar.header(
+    "⚙️ Investigation Settings"
+)
 
 chain = st.sidebar.selectbox(
     "Select Blockchain",
@@ -58,9 +63,9 @@ wallet_address = st.sidebar.text_input(
 
 max_hop = st.sidebar.slider(
     "Maximum Trace Hops",
-    1,
-    3,
-    2
+    min_value=1,
+    max_value=3,
+    value=2
 )
 
 analyze_button = st.sidebar.button(
@@ -70,7 +75,7 @@ analyze_button = st.sidebar.button(
 
 
 # ============================================================
-# DEMO TRANSACTIONS
+# DEMO DATA
 # ============================================================
 
 demo_transactions = [
@@ -141,7 +146,7 @@ demo_transactions = [
 
 
 # ============================================================
-# HELPER — TIMESTAMP
+# HELPER FUNCTIONS
 # ============================================================
 
 def format_timestamp(timestamp):
@@ -162,10 +167,6 @@ def format_timestamp(timestamp):
         return str(timestamp)
 
 
-# ============================================================
-# HELPER — ADDRESS
-# ============================================================
-
 def short_address(address):
 
     address = str(address)
@@ -179,10 +180,6 @@ def short_address(address):
         + address[-6:]
     )
 
-
-# ============================================================
-# HELPER — TRANSACTION HOP
-# ============================================================
 
 def get_transaction_hop(
     tx,
@@ -198,7 +195,9 @@ def get_transaction_hop(
         tx.get("to", "")
     ).lower()
 
-    start_wallet = start_wallet.lower()
+    start_wallet = str(
+        start_wallet
+    ).lower()
 
     if sender in wallet_hops:
 
@@ -214,10 +213,6 @@ def get_transaction_hop(
 
     return "-"
 
-
-# ============================================================
-# HELPER — INDICATOR
-# ============================================================
 
 def get_indicator(
     tx,
@@ -240,7 +235,7 @@ def get_indicator(
     ).lower()
 
 
-    # Abnormal transaction
+    # Abnormal
     if tx_hash in abnormal_hashes:
 
         return "🚨 Abnormal"
@@ -278,10 +273,14 @@ def get_indicator(
 
 
 # ============================================================
-# MAIN ANALYSIS
+# ANALYSIS
 # ============================================================
 
 if analyze_button:
+
+    # --------------------------------------------------------
+    # VALIDATE WALLET
+    # --------------------------------------------------------
 
     if not wallet_address:
 
@@ -338,7 +337,7 @@ if analyze_button:
 
 
     # ========================================================
-    # REAL WALLET
+    # REAL WALLET MODE
     # ========================================================
 
     else:
@@ -347,11 +346,21 @@ if analyze_button:
             "⛓️ Fetching blockchain transactions..."
         ):
 
-            result = recursive_trace(
-                wallet_address,
-                chain,
-                max_hop=max_hop
-            )
+            try:
+
+                result = recursive_trace(
+                    wallet_address,
+                    chain,
+                    max_hop=max_hop
+                )
+
+            except Exception as e:
+
+                st.error(
+                    f"❌ Blockchain analysis failed: {e}"
+                )
+
+                st.stop()
 
 
         transactions = result.get(
@@ -388,13 +397,27 @@ if analyze_button:
 
 
     # ========================================================
+    # NORMALIZE HOP KEYS
+    # ========================================================
+
+    normalized_wallet_hops = {}
+
+    for address, hop in wallet_hops.items():
+
+        normalized_wallet_hops[
+            str(address).lower()
+        ] = hop
+
+    wallet_hops = normalized_wallet_hops
+
+
+    # ========================================================
     # ABNORMAL DETECTION
     # ========================================================
 
     abnormal_alerts = detect_abnormal_transactions(
         transactions
     )
-
 
     abnormal_hashes = set()
 
@@ -418,7 +441,6 @@ if analyze_button:
         transactions
     )
 
-
     vasp_addresses = set()
 
     for vasp in vasp_results:
@@ -436,7 +458,7 @@ if analyze_button:
 
 
     # ========================================================
-    # OVERVIEW
+    # INVESTIGATION OVERVIEW
     # ========================================================
 
     st.header(
@@ -467,7 +489,7 @@ if analyze_button:
 
 
     # ========================================================
-    # TRANSACTION TIMELINE V2
+    # TRANSACTION TIMELINE
     # ========================================================
 
     st.divider()
@@ -494,13 +516,11 @@ if analyze_button:
             )
         )
 
-
         hop = get_transaction_hop(
             tx,
             wallet_hops,
             wallet_address
         )
-
 
         indicator = get_indicator(
             tx,
@@ -560,31 +580,33 @@ if analyze_button:
         )
 
 
-        # Sort chronologically
+        # Sort using original timestamps
 
-        try:
+        sort_values = []
 
-            raw_times = []
+        for tx in transactions:
 
-            for tx in transactions:
+            try:
 
-                try:
-
-                    raw_times.append(
-                        int(
-                            tx.get(
-                                "timeStamp",
-                                0
-                            ) or 0
-                        )
+                sort_values.append(
+                    int(
+                        tx.get(
+                            "timeStamp",
+                            0
+                        ) or 0
                     )
+                )
 
-                except:
+            except:
 
-                    raw_times.append(0)
+                sort_values.append(0)
 
 
-            timeline_df["_sort"] = raw_times
+        if len(sort_values) == len(
+            timeline_df
+        ):
+
+            timeline_df["_sort"] = sort_values
 
             timeline_df = timeline_df.sort_values(
                 "_sort"
@@ -594,20 +616,11 @@ if analyze_button:
                 columns=["_sort"]
             )
 
-        except:
-
-            pass
-
 
         st.dataframe(
             timeline_df,
             use_container_width=True,
             hide_index=True
-        )
-
-
-        st.caption(
-            f"Showing {len(timeline_df)} observed transactions."
         )
 
 
@@ -649,7 +662,7 @@ if analyze_button:
 
 
     # ========================================================
-    # VASP
+    # VASP ASSOCIATION
     # ========================================================
 
     st.divider()
@@ -691,7 +704,6 @@ if analyze_button:
 
     patterns = []
 
-
     senders = {}
     receivers = {}
 
@@ -719,7 +731,6 @@ if analyze_button:
                 0
             ) + 1
         )
-
 
         receivers[receiver] = (
             receivers.get(
@@ -787,7 +798,7 @@ if analyze_button:
 
 
     # ========================================================
-    # RISK SCORE
+    # EXPLAINABLE RISK SCORE
     # ========================================================
 
     st.divider()
@@ -797,47 +808,177 @@ if analyze_button:
     )
 
 
+    risk_factors = []
+
     risk_score = 0
 
 
+    # --------------------------------------------------------
+    # TRANSACTION ACTIVITY
+    # --------------------------------------------------------
+
     if len(transactions) > 100:
 
-        risk_score += 25
+        score = 25
 
     elif len(transactions) > 50:
 
-        risk_score += 15
+        score = 15
 
+    else:
+
+        score = 0
+
+
+    risk_score += score
+
+
+    risk_factors.append({
+
+        "Factor":
+            "Transaction Activity",
+
+        "Score":
+            score,
+
+        "Reason":
+            f"{len(transactions)} transactions analyzed"
+    })
+
+
+    # --------------------------------------------------------
+    # CONNECTED WALLETS
+    # --------------------------------------------------------
 
     if len(connected_wallets) > 20:
 
-        risk_score += 25
+        score = 25
 
     elif len(connected_wallets) > 10:
 
-        risk_score += 15
+        score = 15
 
+    else:
+
+        score = 0
+
+
+    risk_score += score
+
+
+    risk_factors.append({
+
+        "Factor":
+            "Connected Wallets",
+
+        "Score":
+            score,
+
+        "Reason":
+            f"{len(connected_wallets)} connected wallets"
+    })
+
+
+    # --------------------------------------------------------
+    # ABNORMAL ACTIVITY
+    # --------------------------------------------------------
 
     if len(abnormal_alerts) > 0:
 
-        risk_score += 20
+        score = 20
 
+    else:
+
+        score = 0
+
+
+    risk_score += score
+
+
+    risk_factors.append({
+
+        "Factor":
+            "Abnormal Transactions",
+
+        "Score":
+            score,
+
+        "Reason":
+            f"{len(abnormal_alerts)} abnormal alert(s)"
+    })
+
+
+    # --------------------------------------------------------
+    # MULTI-HOP
+    # --------------------------------------------------------
 
     if actual_max_hop >= 2:
 
-        risk_score += 15
+        score = 15
 
+    else:
+
+        score = 0
+
+
+    risk_score += score
+
+
+    risk_factors.append({
+
+        "Factor":
+            "Multi-Hop Movement",
+
+        "Score":
+            score,
+
+        "Reason":
+            f"Trace depth: {actual_max_hop} hop(s)"
+    })
+
+
+    # --------------------------------------------------------
+    # VASP
+    # --------------------------------------------------------
 
     if vasp_results:
 
-        risk_score += 15
+        score = 15
 
+    else:
+
+        score = 0
+
+
+    risk_score += score
+
+
+    risk_factors.append({
+
+        "Factor":
+            "Potential VASP Association",
+
+        "Score":
+            score,
+
+        "Reason":
+            f"{len(vasp_results)} registry match(es)"
+    })
+
+
+    # --------------------------------------------------------
+    # LIMIT SCORE
+    # --------------------------------------------------------
 
     risk_score = min(
         risk_score,
         100
     )
 
+
+    # --------------------------------------------------------
+    # RISK LEVEL
+    # --------------------------------------------------------
 
     if risk_score >= 70:
 
@@ -852,11 +993,15 @@ if analyze_button:
         risk_level = "LOW"
 
 
+    # --------------------------------------------------------
+    # OVERALL SCORE
+    # --------------------------------------------------------
+
     c1, c2 = st.columns(2)
 
 
     c1.metric(
-        "Risk Score",
+        "Overall Risk Score",
         f"{risk_score}/100"
     )
 
@@ -867,8 +1012,29 @@ if analyze_button:
     )
 
 
+    # --------------------------------------------------------
+    # RISK BREAKDOWN
+    # --------------------------------------------------------
+
+    st.subheader(
+        "🔍 Why this score?"
+    )
+
+
+    risk_df = pd.DataFrame(
+        risk_factors
+    )
+
+
+    st.dataframe(
+        risk_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
     # ========================================================
-    # FUND FLOW GRAPH
+    # FUND FLOW NETWORK
     # ========================================================
 
     st.divider()
@@ -908,14 +1074,32 @@ if analyze_button:
             continue
 
 
+        # ----------------------------------------------------
+        # Sender node
+        # ----------------------------------------------------
+
         if sender not in added_nodes:
 
+            sender_hop = wallet_hops.get(
+                str(sender).lower(),
+                0
+            )
+
             net.add_node(
+
                 sender,
-                label=short_address(
-                    sender
+
+                label=(
+                    short_address(
+                        sender
+                    )
                 ),
-                title=sender,
+
+                title=(
+                    f"Wallet: {sender}<br>"
+                    f"Hop: {sender_hop}"
+                ),
+
                 shape="dot"
             )
 
@@ -924,14 +1108,32 @@ if analyze_button:
             )
 
 
+        # ----------------------------------------------------
+        # Receiver node
+        # ----------------------------------------------------
+
         if receiver not in added_nodes:
 
+            receiver_hop = wallet_hops.get(
+                str(receiver).lower(),
+                0
+            )
+
             net.add_node(
+
                 receiver,
-                label=short_address(
-                    receiver
+
+                label=(
+                    short_address(
+                        receiver
+                    )
                 ),
-                title=receiver,
+
+                title=(
+                    f"Wallet: {receiver}<br>"
+                    f"Hop: {receiver_hop}"
+                ),
+
                 shape="dot"
             )
 
@@ -940,9 +1142,16 @@ if analyze_button:
             )
 
 
+        # ----------------------------------------------------
+        # Edge
+        # ----------------------------------------------------
+
         net.add_edge(
+
             sender,
+
             receiver,
+
             title=(
                 f"{tx.get('value', 0)} "
                 f"{tx.get('asset', 'ETH')}"
@@ -1064,16 +1273,27 @@ if analyze_button:
 
 
         generate_pdf_report(
+
             file_path=pdf_path,
+
             wallet_address=wallet_address,
+
             chain=chain,
+
             transactions=transactions,
+
             connected_wallets=connected_wallets,
+
             max_hop=actual_max_hop,
+
             abnormal_alerts=abnormal_alerts,
+
             vasp_results=vasp_results,
+
             risk_score=risk_score,
+
             risk_level=risk_level,
+
             patterns=patterns
         )
 
@@ -1087,10 +1307,20 @@ if analyze_button:
 
 
         st.download_button(
-            label="📥 Download Investigation Report PDF",
+
+            label=(
+                "📥 Download Investigation "
+                "Report PDF"
+            ),
+
             data=pdf_data,
-            file_name="CryptoShield_Investigation_Report.pdf",
+
+            file_name=(
+                "CryptoShield_Investigation_Report.pdf"
+            ),
+
             mime="application/pdf",
+
             use_container_width=True
         )
 
@@ -1104,8 +1334,9 @@ if analyze_button:
 
     finally:
 
-        if pdf_path and os.path.exists(
+        if (
             pdf_path
+            and os.path.exists(pdf_path)
         ):
 
             os.remove(
