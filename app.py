@@ -565,9 +565,29 @@ for tx in transactions[:30]:
 # GRAPH
 # --------------------------------------------------
 
-st.header("🌐 Transaction Graph")
+st.header("🌐 Transaction Network")
+
+st.caption(
+    "The graph shows how funds move from the reported "
+    "suspect wallet to connected wallets."
+)
 
 if transactions:
+
+    # ----------------------------------------------
+    # GET HOP INFORMATION
+    # ----------------------------------------------
+
+    wallet_hops = trace_result.get(
+        "wallet_hops",
+        {}
+    )
+
+    suspect_lower = wallet_address.lower()
+
+    # ----------------------------------------------
+    # GRAPH
+    # ----------------------------------------------
 
     graph = Network(
         height="650px",
@@ -580,64 +600,194 @@ if transactions:
 
     graph.set_options("""
     {
-      "nodes": {
-        "font": {
-          "size": 16
-        }
-      },
-      "edges": {
-        "arrows": {
-          "to": {
-            "enabled": true
-          }
+        "nodes": {
+            "font": {
+                "size": 16
+            },
+            "shape": "dot"
         },
-        "smooth": {
-          "enabled": true
+
+        "edges": {
+            "arrows": {
+                "to": {
+                    "enabled": true
+                }
+            },
+
+            "smooth": {
+                "enabled": true
+            }
+        },
+
+        "physics": {
+            "enabled": true,
+            "stabilization": {
+                "iterations": 150
+            }
         }
-      },
-      "physics": {
-        "enabled": true
-      }
     }
     """)
 
     added_nodes = set()
 
+    # ----------------------------------------------
+    # ADD NODES + EDGES
+    # ----------------------------------------------
+
     for tx in transactions[:100]:
 
-        sender = tx["from"]
-        receiver = tx["to"]
+        sender = tx.get(
+            "from",
+            ""
+        )
+
+        receiver = tx.get(
+            "to",
+            ""
+        )
+
+        if not sender or not receiver:
+            continue
+
+        # ------------------------------------------
+        # SENDER
+        # ------------------------------------------
 
         if sender not in added_nodes:
 
-            graph.add_node(
+            sender_hop = wallet_hops.get(
                 sender,
-                label=sender[:10] + "...",
-                title=sender
+                wallet_hops.get(
+                    sender.lower(),
+                    1
+                )
             )
+
+            if sender.lower() == suspect_lower:
+
+                label = "🚨 SUSPECT\n" + (
+                    sender[:10] + "..."
+                )
+
+                title = (
+                    "SUSPECT WALLET\n"
+                    + sender
+                    + "\nHop: 0"
+                )
+
+                graph.add_node(
+                    sender,
+                    label=label,
+                    title=title,
+                    size=35
+                )
+
+            else:
+
+                label = (
+                    f"Wallet H{sender_hop}\n"
+                    + sender[:10]
+                    + "..."
+                )
+
+                title = (
+                    "Connected Wallet\n"
+                    + sender
+                    + f"\nHop: {sender_hop}"
+                )
+
+                graph.add_node(
+                    sender,
+                    label=label,
+                    title=title,
+                    size=22
+                )
 
             added_nodes.add(sender)
 
+        # ------------------------------------------
+        # RECEIVER
+        # ------------------------------------------
+
         if receiver not in added_nodes:
 
-            graph.add_node(
+            receiver_hop = wallet_hops.get(
                 receiver,
-                label=receiver[:10] + "...",
-                title=receiver
+                wallet_hops.get(
+                    receiver.lower(),
+                    1
+                )
             )
 
+            if receiver.lower() == suspect_lower:
+
+                label = "🚨 SUSPECT\n" + (
+                    receiver[:10] + "..."
+                )
+
+                title = (
+                    "SUSPECT WALLET\n"
+                    + receiver
+                    + "\nHop: 0"
+                )
+
+                graph.add_node(
+                    receiver,
+                    label=label,
+                    title=title,
+                    size=35
+                )
+
+            else:
+
+                label = (
+                    f"Wallet H{receiver_hop}\n"
+                    + receiver[:10]
+                    + "..."
+                )
+
+                title = (
+                    "Connected Wallet\n"
+                    + receiver
+                    + f"\nHop: {receiver_hop}"
+                )
+
+                graph.add_node(
+                    receiver,
+                    label=label,
+                    title=title,
+                    size=22
+                )
+
             added_nodes.add(receiver)
+
+        # ------------------------------------------
+        # EDGE
+        # ------------------------------------------
+
+        value = tx.get(
+            "value",
+            0
+        )
+
+        asset = tx.get(
+            "asset",
+            ""
+        )
 
         graph.add_edge(
             sender,
             receiver,
-            label=str(
-                round(
-                    tx["value"],
-                    4
-                )
+            label=f"{value:.4f} {asset}",
+            title=(
+                f"Transaction: "
+                f"{tx.get('hash', 'Unknown')}"
             )
         )
+
+    # ----------------------------------------------
+    # SHOW GRAPH
+    # ----------------------------------------------
 
     graph_html = graph.generate_html()
 
@@ -647,13 +797,32 @@ if transactions:
         scrolling=True
     )
 
+    # ----------------------------------------------
+    # GRAPH LEGEND
+    # ----------------------------------------------
+
+    st.markdown(
+        """
+        **Network interpretation**
+
+        🚨 **SUSPECT** → Reported wallet
+
+        **Wallet H1** → Directly connected wallet
+
+        **Wallet H2** → Second-hop wallet
+
+        ➡️ **Arrow** → Direction of transaction
+
+        💰 **Edge label** → Transfer amount
+        """
+    )
+
 else:
 
     st.info(
-        "No transactions available for graph generation."
+        "No transactions available "
+        "for graph generation."
     )
-
-
 # --------------------------------------------------
 # VASP
 # --------------------------------------------------
