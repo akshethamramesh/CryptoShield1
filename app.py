@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import networkx as nx
 
 from pyvis.network import Network
 from streamlit.components.v1 import html
@@ -8,7 +7,10 @@ from streamlit.components.v1 import html
 from blockchain import recursive_trace
 from abnormal_detection import detect_abnormal_transactions
 from vasp_detection import detect_vasp
-from report_generator import generate_report
+from report_generator import generate_pdf_report
+
+import tempfile
+import os
 
 
 # ============================================================
@@ -165,7 +167,7 @@ else:
 
 
 # ============================================================
-# START ANALYSIS
+# START BUTTON
 # ============================================================
 
 analyze_button = st.sidebar.button(
@@ -174,29 +176,44 @@ analyze_button = st.sidebar.button(
 )
 
 
+# ============================================================
+# ANALYSIS
+# ============================================================
+
 if analyze_button:
 
-    # --------------------------------------------------------
+    # ========================================================
     # VALIDATION
-    # --------------------------------------------------------
+    # ========================================================
 
     if analysis_mode == "Real Wallet Analysis":
 
         if not wallet_address:
-            st.error("Please enter a wallet address.")
+
+            st.error(
+                "Please enter a wallet address."
+            )
+
             st.stop()
 
         wallet_address = wallet_address.strip()
 
         if not wallet_address.startswith("0x"):
-            st.error("Invalid wallet address format.")
+
+            st.error(
+                "Invalid wallet address format."
+            )
+
             st.stop()
 
-    # --------------------------------------------------------
-    # LOAD BLOCKCHAIN DATA
-    # --------------------------------------------------------
 
-    with st.spinner("🔄 Collecting blockchain transactions..."):
+    # ========================================================
+    # BLOCKCHAIN DATA
+    # ========================================================
+
+    with st.spinner(
+        "🔄 Collecting blockchain transactions..."
+    ):
 
         if analysis_mode == "Demo Suspicious Wallet":
 
@@ -217,12 +234,19 @@ if analyze_button:
             )
 
             hop_map = {
+
                 "DEMO_SUSPECT_A": 0,
+
                 "DEMO_WALLET_B": 1,
+
                 "DEMO_WALLET_C": 1,
+
                 "DEMO_WALLET_D": 1,
+
                 "DEMO_WALLET_E": 2,
+
                 "DEMO_WALLET_F": 2,
+
                 "0x1111111111111111111111111111111111111111": 3
             }
 
@@ -275,7 +299,7 @@ if analyze_button:
 
 
     # ========================================================
-    # BASIC CHECK
+    # TRANSACTION CHECK
     # ========================================================
 
     if not transactions:
@@ -291,7 +315,9 @@ if analyze_button:
     # ABNORMAL TRANSACTION DETECTION
     # ========================================================
 
-    with st.spinner("🧠 Detecting suspicious transaction patterns..."):
+    with st.spinner(
+        "🧠 Detecting suspicious transaction patterns..."
+    ):
 
         abnormal_alerts = detect_abnormal_transactions(
             transactions
@@ -302,7 +328,9 @@ if analyze_button:
     # VASP DETECTION
     # ========================================================
 
-    with st.spinner("🏦 Checking potential VASP associations..."):
+    with st.spinner(
+        "🏦 Checking potential VASP associations..."
+    ):
 
         vasp_results = detect_vasp(
             transactions
@@ -321,22 +349,37 @@ if analyze_button:
 
     incoming_count = 0
 
+
     for tx in transactions:
 
-        sender = tx.get("from", "")
+        sender = tx.get(
+            "from",
+            ""
+        )
 
-        receiver = tx.get("to", "")
+        receiver = tx.get(
+            "to",
+            ""
+        )
 
         if sender:
-            senders.add(sender.lower())
+
+            senders.add(
+                sender.lower()
+            )
 
         if receiver:
-            recipients.add(receiver.lower())
+
+            recipients.add(
+                receiver.lower()
+            )
 
         if sender.lower() == wallet_address.lower():
+
             outgoing_count += 1
 
         if receiver.lower() == wallet_address.lower():
+
             incoming_count += 1
 
 
@@ -346,31 +389,47 @@ if analyze_button:
 
     risk_score = 0
 
+
     # High transaction activity
     if len(transactions) >= 5:
+
         risk_score += 15
+
 
     # Multiple recipients
     if len(recipients) >= 2:
+
         risk_score += 20
+
 
     # Multiple incoming sources
     if len(senders) >= 2:
+
         risk_score += 15
+
 
     # Multi-hop movement
     if actual_max_hop >= 2:
+
         risk_score += 20
+
 
     # Abnormal transactions
     if len(abnormal_alerts) >= 2:
+
         risk_score += 15
+
 
     # VASP association
     if len(vasp_results) > 0:
+
         risk_score += 15
 
-    risk_score = min(risk_score, 100)
+
+    risk_score = min(
+        risk_score,
+        100
+    )
 
 
     # ========================================================
@@ -396,11 +455,13 @@ if analyze_button:
 
     patterns = []
 
+
     if len(transactions) >= 5:
 
         patterns.append(
             "High transaction activity"
         )
+
 
     if len(recipients) >= 2:
 
@@ -408,11 +469,13 @@ if analyze_button:
             "Fund splitting"
         )
 
+
     if len(senders) >= 2:
 
         patterns.append(
             "Multiple incoming sources"
         )
+
 
     if actual_max_hop >= 2:
 
@@ -420,11 +483,13 @@ if analyze_button:
             "Multi-hop fund movement"
         )
 
+
     if len(abnormal_alerts) >= 2:
 
         patterns.append(
             "Abnormal transaction activity"
         )
+
 
     if len(vasp_results) > 0:
 
@@ -434,51 +499,27 @@ if analyze_button:
 
 
     # ========================================================
-    # INVESTIGATION REPORT
-    # ========================================================
-
-    report_text = generate_report(
-
-        wallet_address=wallet_address,
-
-        chain=chain,
-
-        transactions=transactions,
-
-        connected_wallets=connected_wallets,
-
-        max_hop=actual_max_hop,
-
-        abnormal_alerts=abnormal_alerts,
-
-        vasp_results=vasp_results,
-
-        risk_score=risk_score,
-
-        risk_level=risk_level,
-
-        patterns=patterns
-    )
-
-
-    # ========================================================
-    # HEADER
+    # SUCCESS MESSAGE
     # ========================================================
 
     st.success(
         "✅ Investigation completed successfully."
     )
 
+
+    # ========================================================
+    # INVESTIGATION OVERVIEW
+    # ========================================================
+
     st.markdown("---")
 
-    st.subheader("🎯 Investigation Overview")
+    st.subheader(
+        "🎯 Investigation Overview"
+    )
 
-
-    # ========================================================
-    # METRICS
-    # ========================================================
 
     col1, col2, col3, col4, col5 = st.columns(5)
+
 
     with col1:
 
@@ -487,12 +528,14 @@ if analyze_button:
             len(transactions)
         )
 
+
     with col2:
 
         st.metric(
             "Connected Wallets",
             len(connected_wallets)
         )
+
 
     with col3:
 
@@ -501,12 +544,14 @@ if analyze_button:
             actual_max_hop
         )
 
+
     with col4:
 
         st.metric(
             "Risk Score",
             f"{risk_score}/100"
         )
+
 
     with col5:
 
@@ -517,12 +562,15 @@ if analyze_button:
 
 
     # ========================================================
-    # RISK RESULT
+    # RISK ASSESSMENT
     # ========================================================
 
     st.markdown("---")
 
-    st.subheader("🚨 Risk Assessment")
+    st.subheader(
+        "🚨 Risk Assessment"
+    )
+
 
     if risk_level == "HIGH":
 
@@ -542,6 +590,7 @@ if analyze_button:
             f"🟢 LOW RISK — {risk_score}/100"
         )
 
+
     st.caption(
         "Risk score represents analytical indicators only "
         "and does not establish criminal activity."
@@ -554,25 +603,42 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("🧬 Transaction DNA")
+    st.subheader(
+        "🧬 Transaction DNA"
+    )
+
 
     dna_score = 0
 
+
     if len(transactions) >= 50:
+
         dna_score += 25
+
 
     if len(recipients) >= 10:
+
         dna_score += 25
+
 
     if outgoing_count >= 20:
+
         dna_score += 25
+
 
     if actual_max_hop >= 2:
+
         dna_score += 25
 
-    dna_score = min(dna_score, 100)
+
+    dna_score = min(
+        dna_score,
+        100
+    )
+
 
     dna_col1, dna_col2, dna_col3, dna_col4 = st.columns(4)
+
 
     with dna_col1:
 
@@ -581,6 +647,7 @@ if analyze_button:
             len(recipients)
         )
 
+
     with dna_col2:
 
         st.metric(
@@ -588,12 +655,14 @@ if analyze_button:
             outgoing_count
         )
 
+
     with dna_col3:
 
         st.metric(
             "Incoming Transactions",
             incoming_count
         )
+
 
     with dna_col4:
 
@@ -609,7 +678,10 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("🔎 Detected Patterns")
+    st.subheader(
+        "🔎 Detected Patterns"
+    )
+
 
     if patterns:
 
@@ -632,11 +704,15 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("⚠️ Abnormal Transactions")
+    st.subheader(
+        "⚠️ Abnormal Transactions"
+    )
+
 
     if abnormal_alerts:
 
         alert_rows = []
+
 
         for alert in abnormal_alerts:
 
@@ -659,6 +735,7 @@ if analyze_button:
                 }
             )
 
+
         st.dataframe(
             pd.DataFrame(alert_rows),
             use_container_width=True
@@ -677,9 +754,13 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("💸 Fund Flow")
+    st.subheader(
+        "💸 Fund Flow"
+    )
+
 
     flow_rows = []
+
 
     for tx in transactions:
 
@@ -720,7 +801,11 @@ if analyze_button:
             }
         )
 
-    flow_df = pd.DataFrame(flow_rows)
+
+    flow_df = pd.DataFrame(
+        flow_rows
+    )
+
 
     st.dataframe(
         flow_df,
@@ -734,7 +819,10 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("🕸️ Multi-Hop Fund Flow Network")
+    st.subheader(
+        "🕸️ Multi-Hop Fund Flow Network"
+    )
+
 
     graph = Network(
         height="600px",
@@ -743,6 +831,7 @@ if analyze_button:
         font_color="#000000",
         directed=True
     )
+
 
     graph.set_options(
         """
@@ -768,16 +857,25 @@ if analyze_button:
 
     all_nodes = set()
 
+
     for tx in transactions:
 
-        sender = tx.get("from", "")
+        sender = tx.get(
+            "from",
+            ""
+        )
 
-        receiver = tx.get("to", "")
+        receiver = tx.get(
+            "to",
+            ""
+        )
 
         if sender:
+
             all_nodes.add(sender)
 
         if receiver:
+
             all_nodes.add(receiver)
 
 
@@ -787,7 +885,9 @@ if analyze_button:
 
             label = "🚨 REPORTED WALLET"
 
-            title = f"Reported Wallet\n{node}"
+            title = (
+                f"Reported Wallet\n{node}"
+            )
 
         else:
 
@@ -805,6 +905,7 @@ if analyze_button:
                 f"Wallet: {node}\n"
                 f"Hop: {hop}"
             )
+
 
         graph.add_node(
             node,
@@ -844,6 +945,7 @@ if analyze_button:
             ""
         )
 
+
         if sender and receiver:
 
             graph.add_edge(
@@ -855,6 +957,7 @@ if analyze_button:
 
 
     graph_html = graph.generate_html()
+
 
     html(
         graph_html,
@@ -868,11 +971,15 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("🏦 Potential VASP Association")
+    st.subheader(
+        "🏦 Potential VASP Association"
+    )
+
 
     if vasp_results:
 
         vasp_rows = []
+
 
         for vasp in vasp_results:
 
@@ -900,10 +1007,12 @@ if analyze_button:
                 }
             )
 
+
         st.dataframe(
             pd.DataFrame(vasp_rows),
             use_container_width=True
         )
+
 
         st.caption(
             "VASP association is based on available registry "
@@ -923,7 +1032,10 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("📋 Investigation Evidence")
+    st.subheader(
+        "📋 Investigation Evidence"
+    )
+
 
     evidence = {
 
@@ -967,6 +1079,7 @@ if analyze_button:
         ]
     )
 
+
     st.dataframe(
         evidence_df,
         use_container_width=True
@@ -974,32 +1087,101 @@ if analyze_button:
 
 
     # ========================================================
-    # INVESTIGATION REPORT DOWNLOAD
+    # PDF INVESTIGATION REPORT
     # ========================================================
 
     st.markdown("---")
 
-    st.subheader("📄 Investigation Report")
+    st.subheader(
+        "📄 Investigation Report"
+    )
+
 
     st.write(
-        "Download the analytical investigation summary "
-        "generated from the current analysis."
+        "Generate a professional PDF investigation report "
+        "from the current blockchain analysis."
     )
 
-    st.download_button(
 
-        label="📥 Download Investigation Report",
+    # Create temporary PDF file
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".pdf"
+    ) as temp_file:
 
-        data=report_text,
+        pdf_path = temp_file.name
 
-        file_name=(
-            "CryptoShield_Investigation_Report.txt"
-        ),
 
-        mime="text/plain",
+    try:
 
-        use_container_width=True
-    )
+        generate_pdf_report(
+
+            file_path=pdf_path,
+
+            wallet_address=wallet_address,
+
+            chain=chain,
+
+            transactions=transactions,
+
+            connected_wallets=connected_wallets,
+
+            max_hop=actual_max_hop,
+
+            abnormal_alerts=abnormal_alerts,
+
+            vasp_results=vasp_results,
+
+            risk_score=risk_score,
+
+            risk_level=risk_level,
+
+            patterns=patterns
+        )
+
+
+        with open(
+            pdf_path,
+            "rb"
+        ) as pdf_file:
+
+            pdf_data = pdf_file.read()
+
+
+        st.download_button(
+
+            label="📥 Download Investigation Report PDF",
+
+            data=pdf_data,
+
+            file_name=(
+                "CryptoShield_Investigation_Report.pdf"
+            ),
+
+            mime="application/pdf",
+
+            use_container_width=True
+        )
+
+
+    except Exception as e:
+
+        st.error(
+            f"PDF generation failed: {e}"
+        )
+
+
+    finally:
+
+        if os.path.exists(pdf_path):
+
+            try:
+
+                os.remove(pdf_path)
+
+            except Exception:
+
+                pass
 
 
     # ========================================================
@@ -1008,7 +1190,10 @@ if analyze_button:
 
     st.markdown("---")
 
-    st.subheader("🧾 Investigation Conclusion")
+    st.subheader(
+        "🧾 Investigation Conclusion"
+    )
+
 
     st.write(
         f"""
@@ -1022,6 +1207,7 @@ if analyze_button:
         generated a risk score of **{risk_score}/100 ({risk_level})**.
         """
     )
+
 
     st.info(
         "CryptoShield does not declare who is guilty. "
@@ -1042,9 +1228,14 @@ else:
         "**Start Investigation** to begin."
     )
 
+
     st.markdown("---")
 
-    st.subheader("🔄 CryptoShield Workflow")
+
+    st.subheader(
+        "🔄 CryptoShield Workflow"
+    )
+
 
     st.write(
         """
@@ -1060,15 +1251,21 @@ else:
         ↓
         **Potential VASP Association**
         ↓
-        **Investigation Report**
+        **PDF Investigation Report**
         """
     )
 
+
     st.markdown("---")
 
-    st.subheader("🎯 What CryptoShield Provides")
+
+    st.subheader(
+        "🎯 What CryptoShield Provides"
+    )
+
 
     col1, col2, col3 = st.columns(3)
+
 
     with col1:
 
@@ -1081,6 +1278,7 @@ else:
             """
         )
 
+
     with col2:
 
         st.markdown(
@@ -1092,13 +1290,14 @@ else:
             """
         )
 
+
     with col3:
 
         st.markdown(
             """
             ### 📄 Report
 
-            Generates explainable investigation
-            intelligence.
+            Generates a professional PDF
+            investigation report.
             """
         )
