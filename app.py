@@ -75,7 +75,7 @@ analyze_button = st.sidebar.button(
 
 
 # ============================================================
-# DEMO DATA
+# DEMO TRANSACTIONS
 # ============================================================
 
 demo_transactions = [
@@ -200,15 +200,12 @@ def get_transaction_hop(
     ).lower()
 
     if sender in wallet_hops:
-
         return wallet_hops[sender]
 
     if receiver in wallet_hops:
-
         return wallet_hops[receiver]
 
     if sender == start_wallet:
-
         return 0
 
     return "-"
@@ -235,13 +232,11 @@ def get_indicator(
     ).lower()
 
 
-    # Abnormal
     if tx_hash in abnormal_hashes:
 
         return "🚨 Abnormal"
 
 
-    # VASP
     if (
         sender in vasp_addresses
         or receiver in vasp_addresses
@@ -250,7 +245,6 @@ def get_indicator(
         return "🏦 VASP"
 
 
-    # Multi-hop
     sender_hop = wallet_hops.get(
         sender,
         0
@@ -273,14 +267,100 @@ def get_indicator(
 
 
 # ============================================================
-# ANALYSIS
+# FUND FLOW V2 HELPER
+# ============================================================
+
+def get_node_info(
+    address,
+    wallet_hops,
+    start_wallet,
+    vasp_addresses
+):
+
+    address_lower = str(
+        address
+    ).lower()
+
+    start_lower = str(
+        start_wallet
+    ).lower()
+
+
+    # --------------------------------------------------------
+    # Reported wallet
+    # --------------------------------------------------------
+
+    if address_lower == start_lower:
+
+        return (
+            "🔴",
+            "Reported Wallet",
+            0
+        )
+
+
+    # --------------------------------------------------------
+    # VASP
+    # --------------------------------------------------------
+
+    if address_lower in vasp_addresses:
+
+        hop = wallet_hops.get(
+            address_lower,
+            3
+        )
+
+        return (
+            "🏦",
+            "Potential VASP",
+            hop
+        )
+
+
+    # --------------------------------------------------------
+    # Normal wallet
+    # --------------------------------------------------------
+
+    hop = wallet_hops.get(
+        address_lower,
+        1
+    )
+
+
+    if hop == 1:
+
+        return (
+            "🟡",
+            "Hop 1 Wallet",
+            hop
+        )
+
+    elif hop == 2:
+
+        return (
+            "🟠",
+            "Hop 2 Wallet",
+            hop
+        )
+
+    else:
+
+        return (
+            "🟣",
+            f"Hop {hop} Wallet",
+            hop
+        )
+
+
+# ============================================================
+# MAIN ANALYSIS
 # ============================================================
 
 if analyze_button:
 
-    # --------------------------------------------------------
-    # VALIDATE WALLET
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDATION
+    # ========================================================
 
     if not wallet_address:
 
@@ -397,7 +477,7 @@ if analyze_button:
 
 
     # ========================================================
-    # NORMALIZE HOP KEYS
+    # NORMALIZE HOP MAP
     # ========================================================
 
     normalized_wallet_hops = {}
@@ -505,7 +585,6 @@ if analyze_button:
 
     timeline_data = []
 
-
     for tx in transactions:
 
         timestamp = tx.get(
@@ -532,44 +611,50 @@ if analyze_button:
 
         timeline_data.append({
 
-            "Time": format_timestamp(
-                timestamp
-            ),
+            "Time":
+                format_timestamp(timestamp),
 
-            "From": short_address(
+            "From":
+                short_address(
+                    tx.get(
+                        "from",
+                        "Unknown"
+                    )
+                ),
+
+            "To":
+                short_address(
+                    tx.get(
+                        "to",
+                        "Unknown"
+                    )
+                ),
+
+            "Value":
                 tx.get(
-                    "from",
-                    "Unknown"
-                )
-            ),
+                    "value",
+                    0
+                ),
 
-            "To": short_address(
+            "Asset":
                 tx.get(
-                    "to",
-                    "Unknown"
+                    "asset",
+                    "ETH"
+                ),
+
+            "Hop":
+                hop,
+
+            "Indicator":
+                indicator,
+
+            "Transaction":
+                short_address(
+                    tx.get(
+                        "hash",
+                        ""
+                    )
                 )
-            ),
-
-            "Value": tx.get(
-                "value",
-                0
-            ),
-
-            "Asset": tx.get(
-                "asset",
-                "ETH"
-            ),
-
-            "Hop": hop,
-
-            "Indicator": indicator,
-
-            "Transaction": short_address(
-                tx.get(
-                    "hash",
-                    ""
-                )
-            )
         })
 
 
@@ -580,49 +665,11 @@ if analyze_button:
         )
 
 
-        # Sort using original timestamps
-
-        sort_values = []
-
-        for tx in transactions:
-
-            try:
-
-                sort_values.append(
-                    int(
-                        tx.get(
-                            "timeStamp",
-                            0
-                        ) or 0
-                    )
-                )
-
-            except:
-
-                sort_values.append(0)
-
-
-        if len(sort_values) == len(
-            timeline_df
-        ):
-
-            timeline_df["_sort"] = sort_values
-
-            timeline_df = timeline_df.sort_values(
-                "_sort"
-            )
-
-            timeline_df = timeline_df.drop(
-                columns=["_sort"]
-            )
-
-
         st.dataframe(
             timeline_df,
             use_container_width=True,
             hide_index=True
         )
-
 
     else:
 
@@ -740,8 +787,6 @@ if analyze_button:
         )
 
 
-    # Fund splitting
-
     if any(
         count >= 3
         for count in senders.values()
@@ -751,8 +796,6 @@ if analyze_button:
             "Fund splitting detected."
         )
 
-
-    # Fund consolidation
 
     if any(
         count >= 3
@@ -764,16 +807,12 @@ if analyze_button:
         )
 
 
-    # Multi-hop
-
     if actual_max_hop >= 2:
 
         patterns.append(
             "Multi-hop fund movement detected."
         )
 
-
-    # VASP
 
     if vasp_results:
 
@@ -813,9 +852,7 @@ if analyze_button:
     risk_score = 0
 
 
-    # --------------------------------------------------------
-    # TRANSACTION ACTIVITY
-    # --------------------------------------------------------
+    # Transaction activity
 
     if len(transactions) > 100:
 
@@ -832,7 +869,6 @@ if analyze_button:
 
     risk_score += score
 
-
     risk_factors.append({
 
         "Factor":
@@ -846,9 +882,7 @@ if analyze_button:
     })
 
 
-    # --------------------------------------------------------
-    # CONNECTED WALLETS
-    # --------------------------------------------------------
+    # Connected wallets
 
     if len(connected_wallets) > 20:
 
@@ -865,7 +899,6 @@ if analyze_button:
 
     risk_score += score
 
-
     risk_factors.append({
 
         "Factor":
@@ -879,9 +912,7 @@ if analyze_button:
     })
 
 
-    # --------------------------------------------------------
-    # ABNORMAL ACTIVITY
-    # --------------------------------------------------------
+    # Abnormal activity
 
     if len(abnormal_alerts) > 0:
 
@@ -893,7 +924,6 @@ if analyze_button:
 
 
     risk_score += score
-
 
     risk_factors.append({
 
@@ -908,9 +938,7 @@ if analyze_button:
     })
 
 
-    # --------------------------------------------------------
-    # MULTI-HOP
-    # --------------------------------------------------------
+    # Multi-hop
 
     if actual_max_hop >= 2:
 
@@ -922,7 +950,6 @@ if analyze_button:
 
 
     risk_score += score
-
 
     risk_factors.append({
 
@@ -937,9 +964,7 @@ if analyze_button:
     })
 
 
-    # --------------------------------------------------------
     # VASP
-    # --------------------------------------------------------
 
     if vasp_results:
 
@@ -951,7 +976,6 @@ if analyze_button:
 
 
     risk_score += score
-
 
     risk_factors.append({
 
@@ -966,19 +990,11 @@ if analyze_button:
     })
 
 
-    # --------------------------------------------------------
-    # LIMIT SCORE
-    # --------------------------------------------------------
-
     risk_score = min(
         risk_score,
         100
     )
 
-
-    # --------------------------------------------------------
-    # RISK LEVEL
-    # --------------------------------------------------------
 
     if risk_score >= 70:
 
@@ -993,10 +1009,6 @@ if analyze_button:
         risk_level = "LOW"
 
 
-    # --------------------------------------------------------
-    # OVERALL SCORE
-    # --------------------------------------------------------
-
     c1, c2 = st.columns(2)
 
 
@@ -1005,16 +1017,11 @@ if analyze_button:
         f"{risk_score}/100"
     )
 
-
     c2.metric(
         "Risk Level",
         risk_level
     )
 
-
-    # --------------------------------------------------------
-    # RISK BREAKDOWN
-    # --------------------------------------------------------
 
     st.subheader(
         "🔍 Why this score?"
@@ -1025,7 +1032,6 @@ if analyze_button:
         risk_factors
     )
 
-
     st.dataframe(
         risk_df,
         use_container_width=True,
@@ -1034,18 +1040,44 @@ if analyze_button:
 
 
     # ========================================================
-    # FUND FLOW NETWORK
+    # FUND FLOW NETWORK V2
     # ========================================================
 
     st.divider()
 
     st.header(
-        "🕸️ Fund Flow Network"
+        "🕸️ Fund Flow Network V2"
+    )
+
+    st.caption(
+        "Visual reconstruction of the reported wallet's "
+        "observed transaction network."
     )
 
 
+    # --------------------------------------------------------
+    # LEGEND
+    # --------------------------------------------------------
+
+    st.markdown(
+        """
+        **Legend**
+
+        🔴 Reported Wallet &nbsp;&nbsp;
+        🟡 Hop 1 &nbsp;&nbsp;
+        🟠 Hop 2 &nbsp;&nbsp;
+        🟣 Hop 3+ &nbsp;&nbsp;
+        🏦 Potential VASP
+        """
+    )
+
+
+    # --------------------------------------------------------
+    # CREATE NETWORK
+    # --------------------------------------------------------
+
     net = Network(
-        height="600px",
+        height="650px",
         width="100%",
         directed=True,
         bgcolor="#ffffff",
@@ -1053,20 +1085,85 @@ if analyze_button:
     )
 
 
+    net.set_options(
+        """
+        {
+            "nodes": {
+                "font": {
+                    "size": 16
+                },
+                "borderWidth": 2
+            },
+
+            "edges": {
+                "arrows": {
+                    "to": {
+                        "enabled": true,
+                        "scaleFactor": 0.7
+                    }
+                },
+
+                "smooth": {
+                    "enabled": true,
+                    "type": "dynamic"
+                },
+
+                "font": {
+                    "size": 11
+                }
+            },
+
+            "physics": {
+                "enabled": true,
+
+                "barnesHut": {
+                    "gravitationalConstant": -3000,
+                    "centralGravity": 0.2,
+                    "springLength": 180,
+                    "springConstant": 0.04,
+                    "damping": 0.09
+                },
+
+                "stabilization": {
+                    "enabled": true,
+                    "iterations": 200
+                }
+            },
+
+            "interaction": {
+                "hover": true,
+                "navigationButtons": true,
+                "keyboard": true
+            }
+        }
+        """
+    )
+
+
+    # --------------------------------------------------------
+    # ADD NODES + EDGES
+    # --------------------------------------------------------
+
     added_nodes = set()
 
+    max_graph_transactions = 100
 
-    for tx in transactions[:100]:
 
-        sender = tx.get(
-            "from",
-            ""
-        )
+    for tx in transactions[:max_graph_transactions]:
 
-        receiver = tx.get(
-            "to",
-            ""
-        )
+        sender = str(
+            tx.get(
+                "from",
+                ""
+            )
+        ).strip()
+
+        receiver = str(
+            tx.get(
+                "to",
+                ""
+            )
+        ).strip()
 
 
         if not sender or not receiver:
@@ -1074,34 +1171,51 @@ if analyze_button:
             continue
 
 
+        sender_color, sender_type, sender_hop = get_node_info(
+            sender,
+            wallet_hops,
+            wallet_address,
+            vasp_addresses
+        )
+
+
+        receiver_color, receiver_type, receiver_hop = get_node_info(
+            receiver,
+            wallet_hops,
+            wallet_address,
+            vasp_addresses
+        )
+
+
         # ----------------------------------------------------
-        # Sender node
+        # Sender Node
         # ----------------------------------------------------
 
         if sender not in added_nodes:
 
-            sender_hop = wallet_hops.get(
-                str(sender).lower(),
-                0
+            sender_title = (
+                f"<b>{sender_type}</b><br>"
+                f"Address: {sender}<br>"
+                f"Hop: {sender_hop}"
             )
+
 
             net.add_node(
 
                 sender,
 
                 label=(
-                    short_address(
-                        sender
-                    )
+                    f"{sender_color} "
+                    f"{short_address(sender)}"
                 ),
 
-                title=(
-                    f"Wallet: {sender}<br>"
-                    f"Hop: {sender_hop}"
-                ),
+                title=sender_title,
 
-                shape="dot"
+                shape="dot",
+
+                size=28 if sender_hop == 0 else 20
             )
+
 
             added_nodes.add(
                 sender
@@ -1109,33 +1223,34 @@ if analyze_button:
 
 
         # ----------------------------------------------------
-        # Receiver node
+        # Receiver Node
         # ----------------------------------------------------
 
         if receiver not in added_nodes:
 
-            receiver_hop = wallet_hops.get(
-                str(receiver).lower(),
-                0
+            receiver_title = (
+                f"<b>{receiver_type}</b><br>"
+                f"Address: {receiver}<br>"
+                f"Hop: {receiver_hop}"
             )
+
 
             net.add_node(
 
                 receiver,
 
                 label=(
-                    short_address(
-                        receiver
-                    )
+                    f"{receiver_color} "
+                    f"{short_address(receiver)}"
                 ),
 
-                title=(
-                    f"Wallet: {receiver}<br>"
-                    f"Hop: {receiver_hop}"
-                ),
+                title=receiver_title,
 
-                shape="dot"
+                shape="dot",
+
+                size=28 if receiver_hop == 0 else 20
             )
+
 
             added_nodes.add(
                 receiver
@@ -1143,8 +1258,31 @@ if analyze_button:
 
 
         # ----------------------------------------------------
-        # Edge
+        # EDGE
         # ----------------------------------------------------
+
+        value = tx.get(
+            "value",
+            0
+        )
+
+        asset = tx.get(
+            "asset",
+            "ETH"
+        )
+
+        tx_hash = tx.get(
+            "hash",
+            ""
+        )
+
+
+        edge_title = (
+            f"<b>Fund Transfer</b><br>"
+            f"Value: {value} {asset}<br>"
+            f"Transaction: {tx_hash}"
+        )
+
 
         net.add_edge(
 
@@ -1152,12 +1290,17 @@ if analyze_button:
 
             receiver,
 
-            title=(
-                f"{tx.get('value', 0)} "
-                f"{tx.get('asset', 'ETH')}"
-            )
+            title=edge_title,
+
+            label=f"{value} {asset}",
+
+            arrows="to"
         )
 
+
+    # --------------------------------------------------------
+    # RENDER GRAPH
+    # --------------------------------------------------------
 
     if added_nodes:
 
@@ -1191,20 +1334,57 @@ if analyze_button:
 
             html(
                 graph_html,
-                height=620,
+                height=680,
                 scrolling=True
+            )
+
+
+        except Exception as e:
+
+            st.error(
+                f"Fund flow graph failed: {e}"
             )
 
 
         finally:
 
-            if graph_path and os.path.exists(
+            if (
                 graph_path
+                and os.path.exists(graph_path)
             ):
 
                 os.remove(
                     graph_path
                 )
+
+
+    else:
+
+        st.info(
+            "No transaction relationships available "
+            "to build the graph."
+        )
+
+
+    # ========================================================
+    # FLOW INTERPRETATION
+    # ========================================================
+
+    st.subheader(
+        "🔎 Flow Interpretation"
+    )
+
+
+    st.write(
+        f"""
+The reported wallet is treated as **Hop 0**.
+Connected wallets are progressively mapped as **Hop 1, Hop 2,
+and Hop 3+** based on the available trace results.
+
+The graph currently contains **{len(added_nodes)} observed nodes**
+and up to **{min(len(transactions), max_graph_transactions)} displayed transactions**.
+"""
+    )
 
 
     # ========================================================
