@@ -1,18 +1,24 @@
+# blockchain.py
+
 import os
 import requests
 import streamlit as st
+
 from dotenv import load_dotenv
 from collections import Counter
 
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 load_dotenv()
 
-
-# ============================================================
-# API KEY
-# ============================================================
-
 try:
-    cloud_key = st.secrets.get("ETHERSCAN_API_KEY", "")
+    cloud_key = st.secrets.get(
+        "ETHERSCAN_API_KEY",
+        ""
+    )
 except Exception:
     cloud_key = ""
 
@@ -21,10 +27,10 @@ ETHERSCAN_API_KEY = (
     or cloud_key
 )
 
+ETHERSCAN_URL = (
+    "https://api.etherscan.io/v2/api"
+)
 
-# ============================================================
-# BLOCKCHAIN CONFIG
-# ============================================================
 
 CHAIN_IDS = {
     "Ethereum": 1,
@@ -32,54 +38,138 @@ CHAIN_IDS = {
 }
 
 
-ETHERSCAN_URL = "https://api.etherscan.io/v2/api"
-
-
 # ============================================================
-# TRACE SETTINGS
+# PERFORMANCE LIMITS
 # ============================================================
 
 MAX_WALLETS_PER_NODE = 5
+
 MAX_TRANSFERS_PER_WALLET = 100
+
+MAX_TOKEN_TRANSFERS_PER_WALLET = 100
+
 MAX_PAGES = 3
 
 
 # ============================================================
-# GET TRANSACTIONS
+# API KEY CHECK
 # ============================================================
 
-def get_transactions(wallet_address, chain="Ethereum"):
+def check_api_key():
 
     if not ETHERSCAN_API_KEY:
+
         raise Exception(
             "ETHERSCAN_API_KEY not found. "
             "Add it to .env or Streamlit Cloud Secrets."
         )
 
+
+# ============================================================
+# VALUE CONVERSION
+# ============================================================
+
+def convert_native_value(value):
+
+    try:
+
+        return int(value) / 10**18
+
+    except:
+
+        try:
+
+            return float(value)
+
+        except:
+
+            return 0
+
+
+def convert_token_value(
+    value,
+    decimals
+):
+
+    try:
+
+        decimals = int(decimals)
+
+        return int(value) / (10 ** decimals)
+
+    except:
+
+        try:
+
+            return float(value)
+
+        except:
+
+            return 0
+
+
+# ============================================================
+# NORMAL TRANSACTIONS
+# ETH / BNB
+# ============================================================
+
+def get_transactions(
+    wallet_address,
+    chain="Ethereum"
+):
+
+    check_api_key()
+
     wallet_address = wallet_address.strip()
 
-    chain_id = CHAIN_IDS.get(chain)
+    chain_id = CHAIN_IDS.get(
+        chain
+    )
 
     if chain_id is None:
+
         raise Exception(
             f"Unsupported blockchain: {chain}"
         )
 
     all_transactions = []
 
-    for page in range(1, MAX_PAGES + 1):
+    for page in range(
+        1,
+        MAX_PAGES + 1
+    ):
 
         params = {
-            "chainid": chain_id,
-            "module": "account",
-            "action": "txlist",
-            "address": wallet_address,
-            "startblock": 0,
-            "endblock": 99999999,
-            "page": page,
-            "offset": MAX_TRANSFERS_PER_WALLET,
-            "sort": "desc",
-            "apikey": ETHERSCAN_API_KEY
+
+            "chainid":
+                chain_id,
+
+            "module":
+                "account",
+
+            "action":
+                "txlist",
+
+            "address":
+                wallet_address,
+
+            "startblock":
+                0,
+
+            "endblock":
+                99999999,
+
+            "page":
+                page,
+
+            "offset":
+                MAX_TRANSFERS_PER_WALLET,
+
+            "sort":
+                "desc",
+
+            "apikey":
+                ETHERSCAN_API_KEY
         }
 
         try:
@@ -106,132 +196,411 @@ def get_transactions(wallet_address, chain="Ethereum"):
                 "Invalid response received from blockchain API."
             )
 
+        result = data.get(
+            "result",
+            []
+        )
 
-        # ----------------------------------------------------
-        # API RESPONSE
-        # ----------------------------------------------------
-
-        result = data.get("result", [])
-
-        if isinstance(result, str):
+        if isinstance(
+            result,
+            str
+        ):
 
             message = result
 
             if (
-                "No transactions found" in message
-                or "No records found" in message
+                "No transactions found"
+                in message
+                or
+                "No records found"
+                in message
             ):
+
                 break
 
             raise Exception(
                 f"Etherscan API error: {message}"
             )
 
+        if not isinstance(
+            result,
+            list
+        ):
 
-        if not isinstance(result, list):
             break
-
 
         if not result:
+
             break
-
-
-        # ----------------------------------------------------
-        # NORMALIZE TRANSACTIONS
-        # ----------------------------------------------------
 
         for tx in result:
 
             normalized_tx = {
-                "hash": tx.get("hash", ""),
 
-                "from": tx.get(
-                    "from",
-                    ""
-                ),
+                "hash":
+                    tx.get(
+                        "hash",
+                        ""
+                    ),
 
-                "to": tx.get(
-                    "to",
-                    ""
-                ),
+                "from":
+                    tx.get(
+                        "from",
+                        ""
+                    ),
 
-                "value": convert_eth_value(
-                    tx.get("value", "0")
-                ),
+                "to":
+                    tx.get(
+                        "to",
+                        ""
+                    ),
 
-                "asset": "ETH",
+                "value":
+                    convert_native_value(
+                        tx.get(
+                            "value",
+                            "0"
+                        )
+                    ),
 
-                "timeStamp": tx.get(
-                    "timeStamp",
-                    ""
-                ),
+                "asset":
+                    "ETH"
+                    if chain == "Ethereum"
+                    else "BNB",
 
-                "blockNumber": tx.get(
-                    "blockNumber",
-                    ""
-                ),
+                "type":
+                    "native",
 
-                "gasUsed": tx.get(
-                    "gasUsed",
-                    ""
-                ),
+                "timeStamp":
+                    tx.get(
+                        "timeStamp",
+                        ""
+                    ),
 
-                "gasPrice": tx.get(
-                    "gasPrice",
-                    ""
-                )
+                "blockNumber":
+                    tx.get(
+                        "blockNumber",
+                        ""
+                    ),
+
+                "gasUsed":
+                    tx.get(
+                        "gasUsed",
+                        ""
+                    ),
+
+                "gasPrice":
+                    tx.get(
+                        "gasPrice",
+                        ""
+                    )
             }
 
             all_transactions.append(
                 normalized_tx
             )
 
-
-        # ----------------------------------------------------
-        # STOP IF LAST PAGE
-        # ----------------------------------------------------
-
         if len(result) < MAX_TRANSFERS_PER_WALLET:
+
             break
 
-
-    # Remove duplicate transactions
-
-    unique_transactions = {}
-
-    for tx in all_transactions:
-
-        tx_hash = tx.get("hash")
-
-        if tx_hash:
-            unique_transactions[tx_hash] = tx
-
-
-    return list(
-        unique_transactions.values()
+    return deduplicate_transactions(
+        all_transactions
     )
 
 
 # ============================================================
-# CONVERT WEI → ETH
+# ERC-20 / BEP-20 TOKEN TRANSFERS
 # ============================================================
 
-def convert_eth_value(value):
+def get_token_transfers(
+    wallet_address,
+    chain="Ethereum"
+):
 
-    try:
+    check_api_key()
 
-        return int(value) / 10**18
+    wallet_address = wallet_address.strip()
 
-    except:
+    chain_id = CHAIN_IDS.get(
+        chain
+    )
+
+    if chain_id is None:
+
+        raise Exception(
+            f"Unsupported blockchain: {chain}"
+        )
+
+    all_transfers = []
+
+    for page in range(
+        1,
+        MAX_PAGES + 1
+    ):
+
+        params = {
+
+            "chainid":
+                chain_id,
+
+            "module":
+                "account",
+
+            "action":
+                "tokentx",
+
+            "address":
+                wallet_address,
+
+            "startblock":
+                0,
+
+            "endblock":
+                99999999,
+
+            "page":
+                page,
+
+            "offset":
+                MAX_TOKEN_TRANSFERS_PER_WALLET,
+
+            "sort":
+                "desc",
+
+            "apikey":
+                ETHERSCAN_API_KEY
+        }
 
         try:
-            return float(value)
-        except:
-            return 0
+
+            response = requests.get(
+                ETHERSCAN_URL,
+                params=params,
+                timeout=20
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+        except requests.RequestException as e:
+
+            raise Exception(
+                f"Token API request failed: {e}"
+            )
+
+        except ValueError:
+
+            raise Exception(
+                "Invalid token API response."
+            )
+
+        result = data.get(
+            "result",
+            []
+        )
+
+        if isinstance(
+            result,
+            str
+        ):
+
+            message = result
+
+            if (
+                "No transactions found"
+                in message
+                or
+                "No records found"
+                in message
+            ):
+
+                break
+
+            # Some API responses may return a
+            # message instead of transaction data.
+            break
+
+        if not isinstance(
+            result,
+            list
+        ):
+
+            break
+
+        if not result:
+
+            break
+
+        for tx in result:
+
+            decimals = tx.get(
+                "tokenDecimal",
+                "18"
+            )
+
+            token_value = (
+                convert_token_value(
+                    tx.get(
+                        "value",
+                        "0"
+                    ),
+                    decimals
+                )
+            )
+
+            normalized_transfer = {
+
+                "hash":
+                    tx.get(
+                        "hash",
+                        ""
+                    ),
+
+                "from":
+                    tx.get(
+                        "from",
+                        ""
+                    ),
+
+                "to":
+                    tx.get(
+                        "to",
+                        ""
+                    ),
+
+                "value":
+                    token_value,
+
+                "asset":
+                    tx.get(
+                        "tokenSymbol",
+                        "TOKEN"
+                    ),
+
+                "type":
+                    "token",
+
+                "token_name":
+                    tx.get(
+                        "tokenName",
+                        "Unknown Token"
+                    ),
+
+                "token_symbol":
+                    tx.get(
+                        "tokenSymbol",
+                        "TOKEN"
+                    ),
+
+                "token_contract":
+                    tx.get(
+                        "contractAddress",
+                        ""
+                    ),
+
+                "token_decimals":
+                    decimals,
+
+                "timeStamp":
+                    tx.get(
+                        "timeStamp",
+                        ""
+                    ),
+
+                "blockNumber":
+                    tx.get(
+                        "blockNumber",
+                        ""
+                    )
+            }
+
+            all_transfers.append(
+                normalized_transfer
+            )
+
+        if len(result) < MAX_TOKEN_TRANSFERS_PER_WALLET:
+
+            break
+
+    return deduplicate_transactions(
+        all_transfers
+    )
 
 
 # ============================================================
-# FIND CONNECTED WALLETS
+# COMBINED BLOCKCHAIN DATA
+# ============================================================
+
+def get_all_transactions(
+    wallet_address,
+    chain="Ethereum"
+):
+
+    native_transactions = get_transactions(
+        wallet_address,
+        chain
+    )
+
+    token_transfers = get_token_transfers(
+        wallet_address,
+        chain
+    )
+
+    combined = (
+        native_transactions
+        +
+        token_transfers
+    )
+
+    return deduplicate_transactions(
+        combined
+    )
+
+
+# ============================================================
+# TRANSACTION DEDUPLICATION
+# ============================================================
+
+def deduplicate_transactions(
+    transactions
+):
+
+    unique = {}
+
+    for tx in transactions:
+
+        tx_hash = tx.get(
+            "hash",
+            ""
+        )
+
+        # Token and native transactions can
+        # occasionally share a transaction hash.
+        # Include type + token contract in key.
+
+        key = (
+            tx_hash,
+            tx.get(
+                "type",
+                "native"
+            ),
+            tx.get(
+                "token_contract",
+                ""
+            )
+        )
+
+        unique[key] = tx
+
+    return list(
+        unique.values()
+    )
+
+
+# ============================================================
+# CONNECTED WALLETS
 # ============================================================
 
 def find_connected_wallets(
@@ -239,37 +608,48 @@ def find_connected_wallets(
     transactions
 ):
 
-    wallet_address = wallet_address.lower()
+    wallet_address = (
+        wallet_address.lower()
+    )
 
     connected = []
 
     for tx in transactions:
 
-        sender = tx.get(
-            "from",
-            ""
-        ).lower()
+        sender = (
+            tx.get(
+                "from",
+                ""
+            ).lower()
+        )
 
-        receiver = tx.get(
-            "to",
-            ""
-        ).lower()
-
+        receiver = (
+            tx.get(
+                "to",
+                ""
+            ).lower()
+        )
 
         if sender == wallet_address:
 
             if receiver:
-                connected.append(receiver)
 
+                connected.append(
+                    receiver
+                )
 
         elif receiver == wallet_address:
 
             if sender:
-                connected.append(sender)
 
+                connected.append(
+                    sender
+                )
 
     return list(
-        set(connected)
+        set(
+            connected
+        )
     )
 
 
@@ -283,36 +663,43 @@ def rank_connected_wallets(
     limit=MAX_WALLETS_PER_NODE
 ):
 
-    wallet_address = wallet_address.lower()
+    wallet_address = (
+        wallet_address.lower()
+    )
 
     interaction_counter = Counter()
 
     for tx in transactions:
 
-        sender = tx.get(
-            "from",
-            ""
-        ).lower()
+        sender = (
+            tx.get(
+                "from",
+                ""
+            ).lower()
+        )
 
-        receiver = tx.get(
-            "to",
-            ""
-        ).lower()
+        receiver = (
+            tx.get(
+                "to",
+                ""
+            ).lower()
+        )
 
+        if sender == wallet_address:
 
-        if sender == wallet_address and receiver:
+            if receiver:
 
-            interaction_counter[
-                receiver
-            ] += 1
+                interaction_counter[
+                    receiver
+                ] += 1
 
+        elif receiver == wallet_address:
 
-        elif receiver == wallet_address and sender:
+            if sender:
 
-            interaction_counter[
-                sender
-            ] += 1
-
+                interaction_counter[
+                    sender
+                ] += 1
 
     ranked = sorted(
         interaction_counter.items(),
@@ -322,12 +709,13 @@ def rank_connected_wallets(
 
     return [
         wallet
-        for wallet, count in ranked[:limit]
+        for wallet, count
+        in ranked[:limit]
     ]
 
 
 # ============================================================
-# MULTI-HOP WALLET TRACE
+# MULTI-HOP WALLET TRACING
 # ============================================================
 
 def trace_wallet(
@@ -344,18 +732,12 @@ def trace_wallet(
             "Wallet address cannot be empty."
         )
 
-
-    # --------------------------------------------------------
-    # BFS QUEUE
-    # --------------------------------------------------------
-
     queue = [
         (
             wallet_address.lower(),
             0
         )
     ]
-
 
     visited = set()
 
@@ -367,54 +749,45 @@ def trace_wallet(
 
     hop_map = {}
 
-
-    # --------------------------------------------------------
-    # BFS
-    # --------------------------------------------------------
-
     while queue:
 
-        current_wallet, current_hop = queue.pop(0)
-
+        current_wallet, current_hop = (
+            queue.pop(0)
+        )
 
         if current_wallet in visited:
-            continue
 
+            continue
 
         if current_hop > max_hop:
-            continue
 
+            continue
 
         visited.add(
             current_wallet
         )
 
-
         wallet_hops[
             current_wallet
         ] = current_hop
-
 
         hop_map[
             current_wallet
         ] = current_hop
 
-
-        # ----------------------------------------------------
-        # FETCH TRANSACTIONS
-        # ----------------------------------------------------
-
         try:
 
-            transactions = get_transactions(
+            # ------------------------------------------------
+            # IMPORTANT:
+            # Get BOTH native + token transactions
+            # ------------------------------------------------
+
+            transactions = get_all_transactions(
                 current_wallet,
                 chain
             )
 
         except Exception as e:
-
-            # Don't completely stop investigation
-            # when one connected wallet fails.
 
             if current_hop == 0:
 
@@ -422,63 +795,53 @@ def trace_wallet(
 
             continue
 
-
-        # ----------------------------------------------------
-        # STORE TRANSACTIONS
-        # ----------------------------------------------------
-
         all_transactions.extend(
             transactions
         )
 
-
-        # ----------------------------------------------------
-        # FIND CONNECTED WALLETS
-        # ----------------------------------------------------
-
-        connected_wallets = find_connected_wallets(
-            current_wallet,
-            transactions
+        connected_wallets = (
+            find_connected_wallets(
+                current_wallet,
+                transactions
+            )
         )
 
-
-        # ----------------------------------------------------
-        # RANK CONNECTIONS
-        # ----------------------------------------------------
-
-        ranked_wallets = rank_connected_wallets(
-            current_wallet,
-            transactions,
-            limit=MAX_WALLETS_PER_NODE
+        ranked_wallets = (
+            rank_connected_wallets(
+                current_wallet,
+                transactions,
+                limit=MAX_WALLETS_PER_NODE
+            )
         )
-
-
-        # ----------------------------------------------------
-        # ADD WALLETS
-        # ----------------------------------------------------
 
         for wallet in connected_wallets:
 
-            wallet_lower = wallet.lower()
+            wallet_lower = (
+                wallet.lower()
+            )
 
-            if wallet_lower != wallet_address.lower():
+            if (
+                wallet_lower
+                !=
+                wallet_address.lower()
+            ):
 
                 all_wallets.add(
                     wallet_lower
                 )
 
-
-        # ----------------------------------------------------
-        # CONTINUE TO NEXT HOP
-        # ----------------------------------------------------
-
         if current_hop < max_hop:
 
             for next_wallet in ranked_wallets:
 
-                next_wallet = next_wallet.lower()
+                next_wallet = (
+                    next_wallet.lower()
+                )
 
-                if next_wallet not in visited:
+                if (
+                    next_wallet
+                    not in visited
+                ):
 
                     queue.append(
                         (
@@ -487,35 +850,19 @@ def trace_wallet(
                         )
                     )
 
+    # --------------------------------------------------------
+    # Remove duplicate transactions
+    # --------------------------------------------------------
 
-    # ========================================================
-    # REMOVE DUPLICATE TRANSACTIONS
-    # ========================================================
-
-    unique_transactions = {}
-
-    for tx in all_transactions:
-
-        tx_hash = tx.get(
-            "hash",
-            ""
+    final_transactions = (
+        deduplicate_transactions(
+            all_transactions
         )
-
-        if tx_hash:
-
-            unique_transactions[
-                tx_hash
-            ] = tx
-
-
-    final_transactions = list(
-        unique_transactions.values()
     )
 
-
-    # ========================================================
-    # SORT BY TIMESTAMP
-    # ========================================================
+    # --------------------------------------------------------
+    # Sort chronologically
+    # --------------------------------------------------------
 
     try:
 
@@ -524,7 +871,8 @@ def trace_wallet(
                 x.get(
                     "timeStamp",
                     0
-                ) or 0
+                )
+                or 0
             )
         )
 
@@ -532,10 +880,38 @@ def trace_wallet(
 
         pass
 
+    # --------------------------------------------------------
+    # Token statistics
+    # --------------------------------------------------------
 
-    # ========================================================
-    # RETURN RESULT
-    # ========================================================
+    token_transactions = [
+        tx
+        for tx in final_transactions
+        if tx.get(
+            "type"
+        ) == "token"
+    ]
+
+    native_transactions = [
+        tx
+        for tx in final_transactions
+        if tx.get(
+            "type"
+        ) == "native"
+    ]
+
+    token_counter = Counter()
+
+    for tx in token_transactions:
+
+        symbol = tx.get(
+            "token_symbol",
+            "TOKEN"
+        )
+
+        token_counter[
+            symbol
+        ] += 1
 
     return {
 
@@ -561,12 +937,31 @@ def trace_wallet(
             hop_map,
 
         "wallet_hops":
-            wallet_hops
+            wallet_hops,
+
+        # ----------------------------------------------------
+        # NEW TOKEN INTELLIGENCE
+        # ----------------------------------------------------
+
+        "token_transactions":
+            token_transactions,
+
+        "native_transactions":
+            native_transactions,
+
+        "token_count":
+            len(token_transactions),
+
+        "native_count":
+            len(native_transactions),
+
+        "token_types":
+            dict(token_counter)
     }
 
 
 # ============================================================
-# COMPATIBILITY FUNCTION
+# BACKWARD COMPATIBILITY
 # ============================================================
 
 def recursive_trace(

@@ -72,13 +72,15 @@ st.markdown(
     CryptoShield converts a **victim-reported suspect wallet address**
     into an explainable blockchain investigation by tracing fund flows,
     analyzing wallet behavior, detecting suspicious indicators,
-    and identifying potential VASP / exchange associations.
+    analyzing token transfers, and identifying potential VASP /
+    exchange associations.
     """
 )
 
 st.warning(
     "⚠️ Analytical intelligence only. A risk score or suspicious "
-    "pattern does not establish criminal activity or identify a person as guilty."
+    "pattern does not establish criminal activity or identify a "
+    "person as guilty."
 )
 
 st.divider()
@@ -140,7 +142,7 @@ analyze_button = st.sidebar.button(
 
 
 # ============================================================
-# PATTERN DETECTION
+# HELPER: PATTERN DETECTION
 # ============================================================
 
 def detect_patterns(
@@ -194,7 +196,7 @@ def detect_patterns(
             pass
 
     # --------------------------------------------------------
-    # Fan-out
+    # FAN-OUT
     # --------------------------------------------------------
 
     if len(outgoing) >= 10:
@@ -210,7 +212,7 @@ def detect_patterns(
         )
 
     # --------------------------------------------------------
-    # Fan-in
+    # FAN-IN
     # --------------------------------------------------------
 
     if len(incoming) >= 10:
@@ -226,7 +228,7 @@ def detect_patterns(
         )
 
     # --------------------------------------------------------
-    # Multi-hop
+    # MULTI-HOP
     # --------------------------------------------------------
 
     max_detected_hop = 0
@@ -240,6 +242,7 @@ def detect_patterns(
             )
 
         except:
+
             max_detected_hop = 0
 
     if max_detected_hop >= 3:
@@ -255,7 +258,7 @@ def detect_patterns(
         )
 
     # --------------------------------------------------------
-    # Rapid transaction sequence
+    # RAPID MOVEMENT
     # --------------------------------------------------------
 
     timestamps.sort()
@@ -291,7 +294,7 @@ def detect_patterns(
 
 
 # ============================================================
-# NODE INFORMATION
+# HELPER: NODE INFORMATION
 # ============================================================
 
 def get_node_info(
@@ -302,7 +305,12 @@ def get_node_info(
 ):
 
     address_lower = address.lower()
+
     start_wallet = start_wallet.lower()
+
+    # --------------------------------------------------------
+    # REPORTED WALLET
+    # --------------------------------------------------------
 
     if address_lower == start_wallet:
 
@@ -310,6 +318,10 @@ def get_node_info(
             "🔴 Reported Wallet",
             0
         )
+
+    # --------------------------------------------------------
+    # VASP
+    # --------------------------------------------------------
 
     if address_lower in vasp_addresses:
 
@@ -320,6 +332,10 @@ def get_node_info(
                 "?"
             )
         )
+
+    # --------------------------------------------------------
+    # HOP
+    # --------------------------------------------------------
 
     hop = wallet_hops.get(
         address_lower,
@@ -372,7 +388,7 @@ def build_fund_flow_graph(
     start_wallet = start_wallet.lower()
 
     # --------------------------------------------------------
-    # VASP addresses
+    # VASP ADDRESSES
     # --------------------------------------------------------
 
     vasp_addresses = set()
@@ -391,7 +407,7 @@ def build_fund_flow_graph(
             )
 
     # --------------------------------------------------------
-    # Add nodes
+    # ADD NODES
     # --------------------------------------------------------
 
     for tx in transactions:
@@ -407,15 +423,23 @@ def build_fund_flow_graph(
         ).lower()
 
         if sender:
-            graph.add_node(sender)
+
+            graph.add_node(
+                sender
+            )
 
         if receiver:
-            graph.add_node(receiver)
 
-    graph.add_node(start_wallet)
+            graph.add_node(
+                receiver
+            )
+
+    graph.add_node(
+        start_wallet
+    )
 
     # --------------------------------------------------------
-    # Add edges
+    # ADD EDGES
     # --------------------------------------------------------
 
     for tx in transactions:
@@ -431,6 +455,7 @@ def build_fund_flow_graph(
         ).lower()
 
         if not sender or not receiver:
+
             continue
 
         value = tx.get(
@@ -441,6 +466,11 @@ def build_fund_flow_graph(
         asset = tx.get(
             "asset",
             "ETH"
+        )
+
+        tx_type = tx.get(
+            "type",
+            "native"
         )
 
         tx_hash = tx.get(
@@ -462,6 +492,7 @@ def build_fund_flow_graph(
 
         title = (
             f"<b>Transaction</b><br>"
+            f"Type: {tx_type}<br>"
             f"From: {sender}<br>"
             f"To: {receiver}<br>"
             f"Value: {value_label}<br>"
@@ -486,7 +517,7 @@ def build_fund_flow_graph(
             )
 
     # --------------------------------------------------------
-    # PyVis
+    # PYVIS
     # --------------------------------------------------------
 
     net = Network(
@@ -538,7 +569,7 @@ def build_fund_flow_graph(
     )
 
     # --------------------------------------------------------
-    # Add visual nodes
+    # ADD VISUAL NODES
     # --------------------------------------------------------
 
     for node in graph.nodes:
@@ -572,6 +603,10 @@ def build_fund_flow_graph(
             f"Address: {node}<br>"
             f"Hop: {hop}"
         )
+
+        # ----------------------------------------------------
+        # NODE COLORS
+        # ----------------------------------------------------
 
         if node == start_wallet:
 
@@ -608,7 +643,7 @@ def build_fund_flow_graph(
         )
 
     # --------------------------------------------------------
-    # Add visual edges
+    # ADD VISUAL EDGES
     # --------------------------------------------------------
 
     for source, target, data in graph.edges(
@@ -655,7 +690,7 @@ if analyze_button:
         try:
 
             with st.spinner(
-                "🔍 Collecting blockchain data and reconstructing fund flow..."
+                "🔍 Collecting native + token blockchain data..."
             ):
 
                 result = trace_wallet(
@@ -672,7 +707,7 @@ if analyze_button:
             )
 
             # ------------------------------------------------
-            # Transaction DNA
+            # TRANSACTION DNA
             # ------------------------------------------------
 
             dna = analyze_transaction_dna(
@@ -683,7 +718,7 @@ if analyze_button:
             st.session_state.dna_result = dna
 
             # ------------------------------------------------
-            # Abnormal detection
+            # ABNORMAL DETECTION
             # ------------------------------------------------
 
             abnormal_alerts = (
@@ -697,7 +732,7 @@ if analyze_button:
             )
 
             # ------------------------------------------------
-            # VASP Intelligence
+            # VASP INTELLIGENCE
             # ------------------------------------------------
 
             vasp_results = detect_vasp(
@@ -758,6 +793,21 @@ if result:
         or []
     )
 
+    token_transactions = result.get(
+        "token_transactions",
+        []
+    )
+
+    native_transactions = result.get(
+        "native_transactions",
+        []
+    )
+
+    token_types = result.get(
+        "token_types",
+        {}
+    )
+
     # ========================================================
     # RISK ENGINE V2
     # ========================================================
@@ -804,7 +854,7 @@ if result:
     )
 
     # ========================================================
-    # OVERVIEW
+    # INVESTIGATION OVERVIEW
     # ========================================================
 
     st.header(
@@ -816,7 +866,7 @@ if result:
     with col1:
 
         st.metric(
-            "Transactions",
+            "Total Transactions",
             len(transactions)
         )
 
@@ -934,6 +984,159 @@ if result:
     st.divider()
 
     # ========================================================
+    # TOKEN TRANSFER INTELLIGENCE
+    # ========================================================
+
+    st.header(
+        "🪙 Token Transfer Intelligence"
+    )
+
+    token_col1, token_col2, token_col3 = (
+        st.columns(3)
+    )
+
+    with token_col1:
+
+        st.metric(
+            "Native Transactions",
+            len(native_transactions)
+        )
+
+    with token_col2:
+
+        st.metric(
+            "Token Transfers",
+            len(token_transactions)
+        )
+
+    with token_col3:
+
+        st.metric(
+            "Token Types",
+            len(token_types)
+        )
+
+    # --------------------------------------------------------
+    # TOKEN TYPES
+    # --------------------------------------------------------
+
+    if token_types:
+
+        st.markdown(
+            "### 🪙 Detected Token Types"
+        )
+
+        token_type_data = []
+
+        for symbol, count in token_types.items():
+
+            token_type_data.append({
+                "Token": symbol,
+                "Transfers": count
+            })
+
+        token_type_df = pd.DataFrame(
+            token_type_data
+        )
+
+        st.dataframe(
+            token_type_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # --------------------------------------------------------
+    # TOKEN EVIDENCE
+    # --------------------------------------------------------
+
+    if token_transactions:
+
+        st.markdown(
+            "### 📋 Token Transfer Evidence"
+        )
+
+        token_display = []
+
+        for tx in token_transactions[:100]:
+
+            token_display.append({
+
+                "Transaction":
+                    tx.get(
+                        "hash",
+                        ""
+                    ),
+
+                "Token":
+                    tx.get(
+                        "token_symbol",
+                        "TOKEN"
+                    ),
+
+                "Amount":
+                    tx.get(
+                        "value",
+                        0
+                    ),
+
+                "From":
+                    tx.get(
+                        "from",
+                        ""
+                    ),
+
+                "To":
+                    tx.get(
+                        "to",
+                        ""
+                    ),
+
+                "Contract":
+                    tx.get(
+                        "token_contract",
+                        ""
+                    ),
+
+                "Timestamp":
+                    tx.get(
+                        "timeStamp",
+                        ""
+                    )
+            })
+
+        token_df = pd.DataFrame(
+            token_display
+        )
+
+        st.dataframe(
+            token_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        if len(token_transactions) > 100:
+
+            st.info(
+                f"Showing first 100 of "
+                f"{len(token_transactions)} token transfers."
+            )
+
+    else:
+
+        st.info(
+            "No ERC-20 / BEP-20 token transfers were found "
+            "in the collected blockchain data."
+        )
+
+    st.caption(
+        "Token amounts are displayed separately from native "
+        "ETH / BNB volume because different assets cannot be "
+        "directly summed without price normalization."
+    )
+
+    st.divider()
+
+    # ========================================================
     # TRANSACTION DNA
     # ========================================================
 
@@ -964,14 +1167,14 @@ if result:
     with dna_col2:
 
         st.metric(
-            "Average Transfer",
+            "Average Native Transfer",
             f'{dna.get("average_transfer", 0):.4f} {native_asset}'
         )
 
     with dna_col3:
 
         st.metric(
-            "Total Volume",
+            "Native Volume",
             f'{dna.get("total_volume", 0):.4f} {native_asset}'
         )
 
@@ -1063,7 +1266,7 @@ if result:
     st.divider()
 
     # ========================================================
-    # FUND FLOW NETWORK
+    # FUND FLOW NETWORK V2
     # ========================================================
 
     st.header(
@@ -1127,6 +1330,7 @@ if result:
             )
 
         except:
+
             pass
 
     st.info(
@@ -1141,7 +1345,7 @@ if result:
 
         🟣 Hop 3+ → deeper network connections
 
-        🏦 Potential VASP → address matching the available VASP registry
+        🏦 Potential VASP → address matching the available registry
         """
     )
 
@@ -1154,7 +1358,7 @@ if result:
     st.divider()
 
     # ========================================================
-    # PATTERNS
+    # FUND FLOW PATTERNS
     # ========================================================
 
     st.header(
@@ -1284,13 +1488,21 @@ if result:
 
         for tx in transactions[:100]:
 
-            display_transactions.append({
+            tx_type = tx.get(
+                "type",
+                "native"
+            )
+
+            row = {
 
                 "Transaction":
                     tx.get(
                         "hash",
                         ""
                     ),
+
+                "Type":
+                    tx_type,
 
                 "From":
                     tx.get(
@@ -1304,16 +1516,16 @@ if result:
                         ""
                     ),
 
-                "Value":
-                    tx.get(
-                        "value",
-                        0
-                    ),
-
                 "Asset":
                     tx.get(
                         "asset",
                         native_asset
+                    ),
+
+                "Value":
+                    tx.get(
+                        "value",
+                        0
                     ),
 
                 "Timestamp":
@@ -1321,7 +1533,24 @@ if result:
                         "timeStamp",
                         ""
                     )
-            })
+            }
+
+            # Add token contract when available
+
+            if tx_type == "token":
+
+                row["Token Contract"] = tx.get(
+                    "token_contract",
+                    ""
+                )
+
+            else:
+
+                row["Token Contract"] = ""
+
+            display_transactions.append(
+                row
+            )
 
         tx_df = pd.DataFrame(
             display_transactions
@@ -1371,29 +1600,45 @@ if result:
         )
 
         st.write(
-            f"**Transactions Analyzed:** {len(transactions)}"
+            f"**Native Transactions:** "
+            f"{len(native_transactions)}"
         )
 
         st.write(
-            f"**Connected Wallets:** {len(connected_wallets)}"
+            f"**Token Transfers:** "
+            f"{len(token_transactions)}"
+        )
+
+        st.write(
+            f"**Connected Wallets:** "
+            f"{len(connected_wallets)}"
         )
 
     with summary_col2:
 
         st.write(
-            f"**Maximum Hop:** {result.get('max_hop', 0)}"
+            f"**Maximum Hop:** "
+            f"{result.get('max_hop', 0)}"
         )
 
         st.write(
-            f"**Risk Score:** {risk_score}/100"
+            f"**Risk Score:** "
+            f"{risk_score}/100"
         )
 
         st.write(
-            f"**Risk Level:** {risk_level}"
+            f"**Risk Level:** "
+            f"{risk_level}"
         )
 
         st.write(
-            f"**Potential VASP Matches:** {len(vasp_results)}"
+            f"**Potential VASP Matches:** "
+            f"{len(vasp_results)}"
+        )
+
+        st.write(
+            f"**Token Types:** "
+            f"{len(token_types)}"
         )
 
     st.divider()
@@ -1459,6 +1704,7 @@ if result:
                 )
 
             except:
+
                 pass
 
         except Exception as e:
@@ -1480,9 +1726,10 @@ if result:
         CryptoShield provides blockchain analytics and investigative
         intelligence.
 
-        Wallet addresses, transaction behavior, VASP associations,
-        and analytical risk scores do not by themselves prove
-        criminal activity or identify a real-world individual.
+        Wallet addresses, transaction behavior, token activity,
+        VASP associations, and analytical risk scores do not by
+        themselves prove criminal activity or identify a
+        real-world individual.
 
         Findings should be independently verified by authorized
         investigators.
