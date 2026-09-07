@@ -1,1 +1,4 @@
-QJX4I3BTMGUQVG8RKUMT9K77GY784JWZPK
+streamlit
+requests
+python-dotenv
+pyvis
