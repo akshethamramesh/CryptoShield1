@@ -1,5 +1,7 @@
 streamlit
+pandas
+networkx
+pyvis
 requests
 python-dotenv
-pyvis
-pandas
+reportlab
