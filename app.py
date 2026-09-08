@@ -35,9 +35,9 @@ st.markdown(
     <style>
 
     .main-title {
-        font-size: 36px;
+        font-size: 38px;
         font-weight: 800;
-        margin-bottom: 5px;
+        margin-bottom: 4px;
     }
 
     .subtitle {
@@ -49,52 +49,56 @@ st.markdown(
     .section-title {
         font-size: 25px;
         font-weight: 750;
-        margin-top: 25px;
-        margin-bottom: 15px;
-    }
-
-    .finding-box {
-        padding: 18px;
-        border-radius: 12px;
-        border: 1px solid rgba(255,255,255,0.10);
-        background: rgba(255,255,255,0.03);
+        margin-top: 30px;
         margin-bottom: 15px;
     }
 
     .risk-high {
-        padding: 18px;
-        border-radius: 12px;
-        background: rgba(255,70,70,0.12);
-        border: 1px solid rgba(255,70,70,0.35);
+        padding: 20px;
+        border-radius: 14px;
+        background: rgba(255, 75, 75, 0.12);
+        border: 1px solid rgba(255, 75, 75, 0.35);
+        margin-bottom: 15px;
     }
 
     .risk-medium {
-        padding: 18px;
-        border-radius: 12px;
-        background: rgba(255,180,50,0.12);
-        border: 1px solid rgba(255,180,50,0.35);
+        padding: 20px;
+        border-radius: 14px;
+        background: rgba(255, 180, 50, 0.12);
+        border: 1px solid rgba(255, 180, 50, 0.35);
+        margin-bottom: 15px;
     }
 
     .risk-low {
-        padding: 18px;
-        border-radius: 12px;
-        background: rgba(50,200,120,0.12);
-        border: 1px solid rgba(50,200,120,0.35);
+        padding: 20px;
+        border-radius: 14px;
+        background: rgba(50, 200, 120, 0.12);
+        border: 1px solid rgba(50, 200, 120, 0.35);
+        margin-bottom: 15px;
     }
 
     .flow-card {
         padding: 18px;
         border-radius: 12px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.12);
+        text-align: center;
+        margin-top: 10px;
+        margin-bottom: 10px;
+    }
+
+    .finding-box {
+        padding: 18px;
+        border-radius: 12px;
         background: rgba(255,255,255,0.035);
         border: 1px solid rgba(255,255,255,0.10);
-        text-align: center;
-        margin: 8px 0;
+        margin-bottom: 15px;
     }
 
     .flow-arrow {
         text-align: center;
-        font-size: 28px;
-        margin: 5px 0;
+        font-size: 26px;
+        margin: 4px;
     }
 
     </style>
@@ -125,21 +129,21 @@ if "risk" not in st.session_state:
 if "patterns" not in st.session_state:
     st.session_state.patterns = []
 
+if "selected_chain" not in st.session_state:
+    st.session_state.selected_chain = "Ethereum"
+
 
 # ============================================================
-# HELPERS
+# HELPER FUNCTIONS
 # ============================================================
 
 def normalize_address(address):
-
     if not address:
         return ""
-
     return str(address).strip().lower()
 
 
 def format_address(address, chars=8):
-
     if not address:
         return "Unknown"
 
@@ -152,7 +156,6 @@ def format_address(address, chars=8):
 
 
 def safe_float(value):
-
     try:
         return float(value)
     except Exception:
@@ -160,7 +163,6 @@ def safe_float(value):
 
 
 def get_timestamp(tx):
-
     try:
         return int(tx.get("timeStamp", 0))
     except Exception:
@@ -168,9 +170,7 @@ def get_timestamp(tx):
 
 
 def format_time(timestamp):
-
     try:
-
         if not timestamp:
             return "Unknown"
 
@@ -179,38 +179,39 @@ def format_time(timestamp):
         ).strftime("%Y-%m-%d %H:%M:%S")
 
     except Exception:
-
         return "Unknown"
+
+
+def get_native_symbol(chain):
+    if chain == "BSC":
+        return "BNB"
+    return "ETH"
 
 
 # ============================================================
 # PATTERN DETECTION
 # ============================================================
 
-def detect_patterns(transactions, trace_data):
+def detect_patterns(transactions, trace_data, dna):
 
     patterns = []
 
     if not transactions:
         return patterns
 
-    # High transaction activity
+    transaction_count = len(transactions)
 
-    if len(transactions) >= 100:
-
+    if transaction_count >= 100:
         patterns.append({
             "pattern": "High transaction activity",
             "severity": "Medium",
             "description":
-                f"{len(transactions)} transactions were observed "
-                "in the analyzed network."
+                f"{transaction_count} transactions were observed "
+                "in the analyzed blockchain network."
         })
 
-
-    # Destination/source diversity
-
-    destinations = set()
     sources = set()
+    destinations = set()
 
     for tx in transactions:
 
@@ -228,9 +229,7 @@ def detect_patterns(transactions, trace_data):
         if receiver:
             destinations.add(receiver)
 
-
     if len(destinations) >= 10:
-
         patterns.append({
             "pattern": "High destination diversity",
             "severity": "Medium",
@@ -239,53 +238,28 @@ def detect_patterns(transactions, trace_data):
                 "destination addresses."
         })
 
-
     if len(sources) >= 10:
-
         patterns.append({
             "pattern": "High source diversity",
             "severity": "Medium",
             "description":
-                f"Funds were received from {len(sources)} "
+                f"Funds were associated with {len(sources)} "
                 "source addresses."
         })
 
+    rapid_movements = dna.get(
+        "rapid_movements",
+        0
+    )
 
-    # Rapid movement
-
-    timestamps = []
-
-    for tx in transactions:
-
-        timestamp = get_timestamp(tx)
-
-        if timestamp:
-            timestamps.append(timestamp)
-
-
-    timestamps.sort()
-
-    rapid_count = 0
-
-    for i in range(1, len(timestamps)):
-
-        if timestamps[i] - timestamps[i - 1] <= 300:
-
-            rapid_count += 1
-
-
-    if rapid_count >= 5:
-
+    if rapid_movements >= 5:
         patterns.append({
             "pattern": "Rapid fund movement",
             "severity": "High",
             "description":
-                f"{rapid_count} rapid transaction intervals "
-                "were detected."
+                f"{rapid_movements} rapid movement indicators "
+                "were observed across wallet activity."
         })
-
-
-    # Multi-hop
 
     max_hop = trace_data.get(
         "max_hop",
@@ -293,17 +267,13 @@ def detect_patterns(transactions, trace_data):
     )
 
     if max_hop >= 2:
-
         patterns.append({
             "pattern": "Multi-hop fund movement",
             "severity": "High",
             "description":
-                f"Fund-flow relationships were traced up to "
-                f"{max_hop} hops."
+                f"Transaction relationships were reconstructed "
+                f"up to {max_hop} hops."
         })
-
-
-    # Token activity
 
     token_count = trace_data.get(
         "token_count",
@@ -316,7 +286,6 @@ def detect_patterns(transactions, trace_data):
     )
 
     if token_count > 0:
-
         patterns.append({
             "pattern": "Token transfer activity",
             "severity": "Informational",
@@ -325,7 +294,6 @@ def detect_patterns(transactions, trace_data):
                 f"{len(token_types)} token types were observed."
         })
 
-
     return patterns
 
 
@@ -333,11 +301,7 @@ def detect_patterns(transactions, trace_data):
 # WALLET IMPORTANCE
 # ============================================================
 
-def wallet_importance(
-    wallet,
-    transactions,
-    start_wallet
-):
+def wallet_importance(wallet, transactions, start_wallet):
 
     wallet = normalize_address(wallet)
     start_wallet = normalize_address(start_wallet)
@@ -358,21 +322,16 @@ def wallet_importance(
         )
 
         if wallet == sender or wallet == receiver:
-
             count += 1
-
 
     return count
 
 
 # ============================================================
-# BUILD FUND FLOW GRAPH
+# FUND FLOW GRAPH
 # ============================================================
 
-def build_fund_flow_graph(
-    trace_data,
-    vasp_matches
-):
+def build_fund_flow_graph(trace_data, vasp_matches):
 
     transactions = trace_data.get(
         "transactions",
@@ -391,11 +350,6 @@ def build_fund_flow_graph(
         {}
     )
 
-
-    # --------------------------------------------------------
-    # Network
-    # --------------------------------------------------------
-
     net = Network(
         height="650px",
         width="100%",
@@ -404,64 +358,58 @@ def build_fund_flow_graph(
         directed=True
     )
 
-
     net.set_options(
         """
         {
-            "nodes": {
-                "shape": "dot",
-                "font": {
-                    "size": 15,
-                    "color": "white"
-                },
-                "borderWidth": 2
+          "nodes": {
+            "shape": "dot",
+            "font": {
+              "size": 15,
+              "color": "white"
+            },
+            "borderWidth": 2
+          },
+
+          "edges": {
+            "arrows": {
+              "to": {
+                "enabled": true
+              }
             },
 
-            "edges": {
-                "arrows": {
-                    "to": {
-                        "enabled": true
-                    }
-                },
-
-                "smooth": {
-                    "type": "curvedCW",
-                    "roundness": 0.2
-                },
-
-                "font": {
-                    "size": 11,
-                    "color": "white"
-                }
+            "smooth": {
+              "type": "curvedCW",
+              "roundness": 0.15
             },
 
-            "physics": {
-                "enabled": false
-            },
-
-            "layout": {
-                "hierarchical": {
-                    "enabled": true,
-                    "direction": "LR",
-                    "sortMethod": "directed",
-                    "levelSeparation": 220,
-                    "nodeSpacing": 150
-                }
-            },
-
-            "interaction": {
-                "hover": true,
-                "navigationButtons": true,
-                "zoomView": true
+            "font": {
+              "size": 10,
+              "color": "white"
             }
+          },
+
+          "physics": {
+            "enabled": false
+          },
+
+          "layout": {
+            "hierarchical": {
+              "enabled": true,
+              "direction": "LR",
+              "sortMethod": "directed",
+              "levelSeparation": 220,
+              "nodeSpacing": 150
+            }
+          },
+
+          "interaction": {
+            "hover": true,
+            "navigationButtons": true,
+            "zoomView": true
+          }
         }
         """
     )
-
-
-    # --------------------------------------------------------
-    # VASP addresses
-    # --------------------------------------------------------
 
     vasp_addresses = set()
 
@@ -477,11 +425,6 @@ def build_fund_flow_graph(
         if address:
             vasp_addresses.add(address)
 
-
-    # --------------------------------------------------------
-    # Wallet scores
-    # --------------------------------------------------------
-
     wallet_scores = {}
 
     for wallet in wallet_hops:
@@ -492,11 +435,6 @@ def build_fund_flow_graph(
             start_wallet
         )
 
-
-    # --------------------------------------------------------
-    # Add nodes
-    # --------------------------------------------------------
-
     for wallet, hop in wallet_hops.items():
 
         wallet = normalize_address(wallet)
@@ -504,24 +442,23 @@ def build_fund_flow_graph(
         if not wallet:
             continue
 
-
         if wallet == start_wallet:
 
             label = "REPORTED\nWALLET"
+            color = "#ff4b4b"
+            size = 38
 
             title = (
                 "<b>Reported Suspect Wallet</b><br>"
-                f"Address: {wallet}"
+                f"{wallet}<br>"
+                "Investigation starting point"
             )
-
-            size = 38
-
-            color = "#ff4b4b"
-
 
         elif wallet in vasp_addresses:
 
             label = "POTENTIAL\nVASP"
+            color = "#b26cff"
+            size = 34
 
             matched = next(
                 (
@@ -537,26 +474,15 @@ def build_fund_flow_graph(
                 "<b>Potential VASP Association</b><br>"
                 f"Name: {matched.get('name', 'Unknown')}<br>"
                 f"Address: {wallet}<br>"
-                "Status: Potential association"
+                f"Source: {matched.get('source', 'Unknown')}<br>"
+                "Requires independent verification"
             )
-
-            size = 34
-
-            color = "#b26cff"
-
 
         else:
 
             label = (
                 f"HOP {hop}\n"
                 f"{format_address(wallet, 6)}"
-            )
-
-            title = (
-                "<b>Connected Wallet</b><br>"
-                f"Address: {wallet}<br>"
-                f"Hop: {hop}<br>"
-                f"Interactions: {wallet_scores.get(wallet, 0)}"
             )
 
             size = max(
@@ -568,17 +494,19 @@ def build_fund_flow_graph(
             )
 
             if hop == 1:
-
                 color = "#ffd43b"
-
             elif hop == 2:
-
                 color = "#ff9f43"
-
             else:
-
                 color = "#9b8cff"
 
+            title = (
+                "<b>Connected Wallet</b><br>"
+                f"Address: {wallet}<br>"
+                f"Hop: {hop}<br>"
+                f"Observed interactions: "
+                f"{wallet_scores.get(wallet, 0)}"
+            )
 
         net.add_node(
             wallet,
@@ -589,13 +517,7 @@ def build_fund_flow_graph(
             level=hop
         )
 
-
-    # --------------------------------------------------------
-    # Edge aggregation
-    # --------------------------------------------------------
-
     edge_data = {}
-
 
     for tx in transactions:
 
@@ -622,35 +544,35 @@ def build_fund_flow_graph(
         if receiver not in wallet_hops:
             continue
 
-
-        token_contract = tx.get(
-            "token_contract",
-            ""
+        asset = tx.get(
+            "asset",
+            "Unknown"
         )
 
+        tx_type = tx.get(
+            "type",
+            "native"
+        )
 
         key = (
             sender,
             receiver,
-            token_contract
+            asset,
+            tx_type
         )
-
 
         if key not in edge_data:
 
             edge_data[key] = {
                 "count": 0,
                 "value": 0,
-                "asset": tx.get(
-                    "asset",
-                    "Unknown"
-                ),
+                "asset": asset,
+                "type": tx_type,
                 "hash": tx.get(
                     "hash",
                     ""
                 )
             }
-
 
         edge_data[key]["count"] += 1
 
@@ -661,51 +583,32 @@ def build_fund_flow_graph(
             )
         )
 
-
-    # --------------------------------------------------------
-    # Top edges
-    # --------------------------------------------------------
-
     sorted_edges = sorted(
         edge_data.items(),
         key=lambda x: x[1]["count"],
         reverse=True
     )
 
-
     sorted_edges = sorted_edges[:40]
 
+    for key, info in sorted_edges:
 
-    for (
-        sender,
-        receiver,
-        token_contract
-    ), info in sorted_edges:
-
-        value = info["value"]
+        sender = key[0]
+        receiver = key[1]
 
         count = info["count"]
-
         asset = info["asset"]
-
-
-        value_text = (
-            f"{value:.4f} {asset}"
-            if asset
-            else f"{value:.4f}"
-        )
-
+        value = info["value"]
 
         title = (
             "<b>Fund Flow</b><br>"
             f"From: {sender}<br>"
             f"To: {receiver}<br>"
             f"Asset: {asset}<br>"
-            f"Observed value: {value_text}<br>"
+            f"Observed amount: {value:.6f}<br>"
             f"Transactions: {count}<br>"
-            f"Transaction: {info['hash']}"
+            f"Type: {info['type']}"
         )
-
 
         net.add_edge(
             sender,
@@ -718,12 +621,11 @@ def build_fund_flow_graph(
             )
         )
 
-
     return net
 
 
 # ============================================================
-# FIND TRACE PATH
+# TRACE PATH
 # ============================================================
 
 def find_trace_path(
@@ -732,45 +634,28 @@ def find_trace_path(
     target_wallet
 ):
 
-    start_wallet = normalize_address(
-        start_wallet
-    )
-
-    target_wallet = normalize_address(
-        target_wallet
-    )
-
+    start_wallet = normalize_address(start_wallet)
+    target_wallet = normalize_address(target_wallet)
 
     graph = {}
-
 
     for tx in transactions:
 
         sender = normalize_address(
-            tx.get(
-                "from",
-                ""
-            )
+            tx.get("from", "")
         )
 
         receiver = normalize_address(
-            tx.get(
-                "to",
-                ""
-            )
+            tx.get("to", "")
         )
 
         if not sender or not receiver:
             continue
 
-
         graph.setdefault(
             sender,
             []
-        ).append(
-            receiver
-        )
-
+        ).append(receiver)
 
     queue = [
         (
@@ -783,16 +668,12 @@ def find_trace_path(
         start_wallet
     }
 
-
     while queue:
 
         current, path = queue.pop(0)
 
-
         if current == target_wallet:
-
             return path
-
 
         for next_wallet in graph.get(
             current,
@@ -802,11 +683,7 @@ def find_trace_path(
             if next_wallet in visited:
                 continue
 
-
-            visited.add(
-                next_wallet
-            )
-
+            visited.add(next_wallet)
 
             queue.append(
                 (
@@ -815,12 +692,11 @@ def find_trace_path(
                 )
             )
 
-
     return []
 
 
 # ============================================================
-# FIND BEST FLOW PATH
+# BEST FLOW PATH
 # ============================================================
 
 def find_best_flow_path(
@@ -834,7 +710,6 @@ def find_best_flow_path(
         start_wallet
     )
 
-
     vasp_addresses = {
         normalize_address(
             x.get(
@@ -845,9 +720,7 @@ def find_best_flow_path(
         for x in vasp_matches
     }
 
-
     graph = {}
-
 
     for tx in transactions:
 
@@ -874,14 +747,10 @@ def find_best_flow_path(
         if receiver not in wallet_hops:
             continue
 
-
         graph.setdefault(
             sender,
             []
-        ).append(
-            receiver
-        )
-
+        ).append(receiver)
 
     queue = [
         (
@@ -890,36 +759,26 @@ def find_best_flow_path(
         )
     ]
 
-
     visited = {
         start_wallet
     }
-
 
     best_path = [
         start_wallet
     ]
 
-
     while queue:
 
         current, path = queue.pop(0)
-
-
-        # VASP is preferred endpoint
 
         if (
             current in vasp_addresses
             and len(path) > 1
         ):
-
             return path
 
-
         if len(path) > len(best_path):
-
             best_path = path
-
 
         for next_wallet in graph.get(
             current,
@@ -929,11 +788,7 @@ def find_best_flow_path(
             if next_wallet in visited:
                 continue
 
-
-            visited.add(
-                next_wallet
-            )
-
+            visited.add(next_wallet)
 
             queue.append(
                 (
@@ -942,7 +797,6 @@ def find_best_flow_path(
                 )
             )
 
-
     return best_path
 
 
@@ -950,19 +804,16 @@ def find_best_flow_path(
 # INVESTIGATION FINDINGS
 # ============================================================
 
-def create_investigation_finding(
+def create_investigation_findings(
     trace_data,
     dna,
-    abnormal,
     vasp,
     risk
 ):
 
     score, level, factors = risk
 
-
     findings = []
-
 
     transaction_count = dna.get(
         "transaction_count",
@@ -994,7 +845,6 @@ def create_investigation_finding(
         0
     )
 
-
     if transaction_count >= 100:
 
         findings.append(
@@ -1002,44 +852,39 @@ def create_investigation_finding(
             f"{transaction_count} transactions analyzed."
         )
 
-
     if max_hop >= 2:
 
         findings.append(
-            f"Multi-hop movement was observed up to "
-            f"{max_hop} hops."
+            f"Multi-hop movement was observed "
+            f"up to {max_hop} hops."
         )
-
 
     if rapid >= 5:
 
         findings.append(
-            f"{rapid} rapid movement intervals were detected."
+            f"{rapid} rapid activity indicators "
+            "were observed."
         )
-
 
     if fan_out >= 5:
 
         findings.append(
-            f"High fan-out behavior was observed with "
-            f"{fan_out} destinations."
+            f"High fan-out behavior: "
+            f"{fan_out} destination wallets."
         )
-
 
     if fan_in >= 5:
 
         findings.append(
-            f"High fan-in behavior was observed with "
-            f"{fan_in} sources."
+            f"High fan-in behavior: "
+            f"{fan_in} source wallets."
         )
-
 
     if token_count > 0:
 
         findings.append(
             f"{token_count} token transfers were observed."
         )
-
 
     if vasp:
 
@@ -1051,10 +896,9 @@ def create_investigation_finding(
     else:
 
         findings.append(
-            "No verified VASP association was identified "
-            "in the current registry."
+            "No matching VASP label was found "
+            "in the currently configured registry."
         )
-
 
     return findings
 
@@ -1065,9 +909,7 @@ def create_investigation_finding(
 
 with st.sidebar:
 
-    st.markdown(
-        "# 🛡️ CryptoShield"
-    )
+    st.markdown("# 🛡️ CryptoShield")
 
     st.markdown(
         "**Blockchain Fraud Intelligence**"
@@ -1077,15 +919,12 @@ with st.sidebar:
         "Start with a victim-reported suspect wallet."
     )
 
-
     st.divider()
-
 
     reported_wallet = st.text_input(
         "Reported Suspect Wallet",
         placeholder="0x..."
     )
-
 
     blockchain = st.selectbox(
         "Blockchain",
@@ -1095,7 +934,6 @@ with st.sidebar:
         ]
     )
 
-
     max_hops = st.slider(
         "Maximum Investigation Hops",
         min_value=1,
@@ -1103,10 +941,10 @@ with st.sidebar:
         value=2
     )
 
-
     start_button = st.button(
         "🔎 Start Investigation",
-        use_container_width=True
+        use_container_width=True,
+        type="primary"
     )
 
 
@@ -1120,15 +958,17 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="subtitle">'
-    'Real-Time Blockchain Fraud Intelligence & Fund-Flow Investigation'
-    '</div>',
+    """
+    <div class="subtitle">
+    Real-Time Blockchain Fraud Intelligence & Fund-Flow Investigation
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
 
 # ============================================================
-# START INVESTIGATION
+# INVESTIGATION
 # ============================================================
 
 if start_button:
@@ -1141,11 +981,12 @@ if start_button:
 
         st.stop()
 
-
     reported_wallet = reported_wallet.strip()
 
-
-    if not reported_wallet.startswith("0x"):
+    if (
+        not reported_wallet.startswith("0x")
+        or len(reported_wallet) != 42
+    ):
 
         st.error(
             "Please enter a valid EVM wallet address."
@@ -1153,15 +994,11 @@ if start_button:
 
         st.stop()
 
-
     with st.spinner(
         "🔎 Collecting blockchain evidence and tracing fund flows..."
     ):
 
         try:
-
-            # IMPORTANT:
-            # blockchain.py expects max_hop, NOT max_hops
 
             trace_data = trace_wallet(
                 reported_wallet,
@@ -1169,34 +1006,29 @@ if start_button:
                 max_hop=max_hops
             )
 
-
             transactions = trace_data.get(
                 "transactions",
                 []
             )
-
 
             dna = analyze_transaction_dna(
                 transactions,
                 reported_wallet
             )
 
-
             abnormal = detect_abnormal_transactions(
                 transactions
             )
-
 
             vasp = detect_vasp(
                 transactions
             )
 
-
             patterns = detect_patterns(
                 transactions,
-                trace_data
+                trace_data,
+                dna
             )
-
 
             risk = calculate_risk_v3(
 
@@ -1253,24 +1085,17 @@ if start_button:
                 )
             )
 
-
             st.session_state.investigation = trace_data
-
             st.session_state.dna = dna
-
             st.session_state.abnormal = abnormal
-
             st.session_state.vasp = vasp
-
             st.session_state.risk = risk
-
             st.session_state.patterns = patterns
-
+            st.session_state.selected_chain = blockchain
 
             st.success(
                 "Investigation completed successfully."
             )
-
 
         except Exception as e:
 
@@ -1282,7 +1107,7 @@ if start_button:
 
 
 # ============================================================
-# NO INVESTIGATION
+# EMPTY STATE
 # ============================================================
 
 if st.session_state.investigation is None:
@@ -1292,27 +1117,23 @@ if st.session_state.investigation is None:
         "click **Start Investigation**."
     )
 
-
     st.markdown(
         """
-        ### 🔍 What CryptoShield investigates
+        ### 🔎 Investigation Workflow
 
-        **Reported Wallet**
-        ↓
-        **Blockchain Data**
-        ↓
-        **Multi-Hop Fund Tracing**
-        ↓
-        **Suspicious Pattern Detection**
-        ↓
-        **Explainable Risk Score**
-        ↓
-        **Potential VASP Association**
-        ↓
-        **Investigation Report**
-
-        CryptoShield provides analytical investigation leads.
-        It does not declare a wallet or person criminal.
+        Reported Wallet  
+        ↓  
+        Blockchain Transactions  
+        ↓  
+        Multi-Hop Fund Tracing  
+        ↓  
+        Behavioral Pattern Detection  
+        ↓  
+        Explainable Risk Assessment  
+        ↓  
+        Potential VASP Association  
+        ↓  
+        Investigation Report
         """
     )
 
@@ -1320,69 +1141,59 @@ if st.session_state.investigation is None:
 
 
 # ============================================================
-# LOAD INVESTIGATION
+# LOAD RESULTS
 # ============================================================
 
 trace_data = st.session_state.investigation
-
 dna = st.session_state.dna
-
 abnormal = st.session_state.abnormal
-
 vasp = st.session_state.vasp
-
 risk = st.session_state.risk
-
 patterns = st.session_state.patterns
 
+selected_chain = st.session_state.selected_chain
 
 transactions = trace_data.get(
     "transactions",
     []
 )
 
-
 start_wallet = trace_data.get(
     "start_wallet",
-    reported_wallet
+    ""
 )
-
 
 score, risk_level, risk_factors = risk
 
-
-# ============================================================
-# 1. INVESTIGATION OVERVIEW
-# ============================================================
-
-st.markdown(
-    '<div class="section-title">'
-    '1️⃣ Investigation Overview'
-    '</div>',
-    unsafe_allow_html=True
+native_symbol = get_native_symbol(
+    selected_chain
 )
 
 
-col1, col2, col3, col4 = st.columns(4)
+# ============================================================
+# 1 OVERVIEW
+# ============================================================
 
+st.markdown(
+    '<div class="section-title">1️⃣ Investigation Overview</div>',
+    unsafe_allow_html=True
+)
+
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
 
     st.metric(
         "Reported Wallet",
-        format_address(
-            start_wallet
-        )
+        format_address(start_wallet)
     )
-
 
 with col2:
 
     st.metric(
         "Blockchain",
-        blockchain
+        selected_chain
     )
-
 
 with col3:
 
@@ -1390,7 +1201,6 @@ with col3:
         "Transactions",
         len(transactions)
     )
-
 
 with col4:
 
@@ -1404,46 +1214,38 @@ with col4:
 
 
 # ============================================================
-# 2. RISK STATUS
+# 2 RISK
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '2️⃣ Risk Status'
-    '</div>',
+    '<div class="section-title">2️⃣ Risk Status</div>',
     unsafe_allow_html=True
 )
-
 
 if risk_level == "HIGH":
 
     risk_class = "risk-high"
-    emoji = "🔴"
+    risk_emoji = "🔴"
 
 elif risk_level == "MEDIUM":
 
     risk_class = "risk-medium"
-    emoji = "🟠"
+    risk_emoji = "🟠"
 
 else:
 
     risk_class = "risk-low"
-    emoji = "🟢"
-
+    risk_emoji = "🟢"
 
 st.markdown(
     f"""
     <div class="{risk_class}">
-
-        <h2>{emoji} {risk_level} RISK</h2>
-
+        <h2>{risk_emoji} {risk_level} RISK</h2>
         <h1>{score}/100</h1>
-
         <p>
-        Analytical risk score based on observed blockchain
-        indicators. This is not a criminal verdict.
+        Explainable analytical risk based on observed
+        blockchain behavior. This score is not a criminal verdict.
         </p>
-
     </div>
     """,
     unsafe_allow_html=True
@@ -1451,61 +1253,71 @@ st.markdown(
 
 
 # ============================================================
-# 3. EXPLAINABLE RISK
+# 3 EXPLAINABLE RISK
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '3️⃣ Explainable Risk Assessment'
-    '</div>',
+    '<div class="section-title">3️⃣ Explainable Risk Assessment</div>',
     unsafe_allow_html=True
 )
 
-
 if risk_factors:
 
-    factor_df = pd.DataFrame(
-        risk_factors
-    )
+    if isinstance(risk_factors, list):
 
+        try:
+            st.dataframe(
+                pd.DataFrame(risk_factors),
+                use_container_width=True,
+                hide_index=True
+            )
 
-    st.dataframe(
-        factor_df,
-        use_container_width=True,
-        hide_index=True
-    )
+        except Exception:
+
+            for factor in risk_factors:
+                st.write(f"• {factor}")
+
+    elif isinstance(risk_factors, dict):
+
+        st.dataframe(
+            pd.DataFrame(
+                list(risk_factors.items()),
+                columns=[
+                    "Risk Factor",
+                    "Contribution"
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+
+        st.write(risk_factors)
 
 else:
 
     st.info(
-        "No significant risk factors were triggered."
+        "No significant risk factors triggered."
     )
 
 
 # ============================================================
-# 4. FUND FLOW INVESTIGATION
+# 4 POLICE FUND FLOW
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '4️⃣ 🧭 Police Fund-Flow Investigation'
-    '</div>',
+    '<div class="section-title">4️⃣ 🧭 Police Fund-Flow Investigation</div>',
     unsafe_allow_html=True
 )
 
-
 st.write(
     """
-    The reported wallet is the starting point.
-    CryptoShield follows connected transaction relationships
-    across multiple hops and highlights important fund-flow paths.
+    CryptoShield reconstructs transaction relationships starting
+    from the victim-reported suspect wallet and follows important
+    connected addresses across multiple hops.
     """
 )
-
-
-# ------------------------------------------------------------
-# Primary path
-# ------------------------------------------------------------
 
 best_path = find_best_flow_path(
     transactions,
@@ -1517,6 +1329,15 @@ best_path = find_best_flow_path(
     vasp
 )
 
+vasp_addresses = {
+    normalize_address(
+        x.get(
+            "address",
+            ""
+        )
+    )
+    for x in vasp
+}
 
 if best_path:
 
@@ -1524,23 +1345,11 @@ if best_path:
         "### 🔎 Primary Traced Path"
     )
 
-
-    vasp_addresses = {
-        normalize_address(
-            x.get(
-                "address",
-                ""
-            )
-        )
-        for x in vasp
-    }
-
-
     for index, wallet in enumerate(
         best_path
     ):
 
-        hop_number = trace_data.get(
+        hop = trace_data.get(
             "wallet_hops",
             {}
         ).get(
@@ -1548,41 +1357,30 @@ if best_path:
             index
         )
 
-
         if normalize_address(wallet) == normalize_address(
             start_wallet
         ):
 
             label = "🔴 REPORTED WALLET"
 
-
         elif normalize_address(wallet) in vasp_addresses:
 
             label = "🟣 POTENTIAL VASP"
 
-
         else:
 
-            label = f"🟡 HOP {hop_number}"
-
+            label = f"🟡 HOP {hop}"
 
         st.markdown(
             f"""
             <div class="flow-card">
-
                 <h3>{label}</h3>
-
-                <p>
-                <b>{format_address(wallet, 10)}</b>
-                </p>
-
+                <p><b>{format_address(wallet, 10)}</b></p>
                 <small>{wallet}</small>
-
             </div>
             """,
             unsafe_allow_html=True
         )
-
 
         if index < len(best_path) - 1:
 
@@ -1591,80 +1389,73 @@ if best_path:
                 unsafe_allow_html=True
             )
 
-
 else:
 
     st.info(
-        "No clear multi-hop path was reconstructed."
+        "No multi-hop path could be reconstructed."
     )
 
 
-# ------------------------------------------------------------
-# Interactive graph
-# ------------------------------------------------------------
+# ============================================================
+# GRAPH
+# ============================================================
 
 st.markdown(
     "### 🌐 Interactive Fund-Flow Network"
 )
 
-
-net = build_fund_flow_graph(
-    trace_data,
-    vasp
-)
-
-
-with tempfile.NamedTemporaryFile(
-    delete=False,
-    suffix=".html"
-) as tmp:
-
-    graph_path = tmp.name
-
-
-net.save_graph(
-    graph_path
-)
-
-
-with open(
-    graph_path,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    graph_html = file.read()
-
-
-components.html(
-    graph_html,
-    height=680,
-    scrolling=True
-)
-
-
 try:
 
-    os.remove(
+    net = build_fund_flow_graph(
+        trace_data,
+        vasp
+    )
+
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".html"
+    ) as tmp:
+
+        graph_path = tmp.name
+
+    net.save_graph(
         graph_path
     )
 
-except Exception:
+    with open(
+        graph_path,
+        "r",
+        encoding="utf-8"
+    ) as file:
 
-    pass
+        graph_html = file.read()
+
+    components.html(
+        graph_html,
+        height=680,
+        scrolling=True
+    )
+
+    try:
+        os.remove(graph_path)
+    except Exception:
+        pass
+
+except Exception as e:
+
+    st.warning(
+        f"Graph rendering unavailable: {e}"
+    )
 
 
 # ============================================================
-# 5. TRACE FUNDS
+# 5 TRACE FUNDS
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '5️⃣ 🔍 Trace Funds'
-    '</div>',
+    '<div class="section-title">5️⃣ 🔍 Trace Funds</div>',
     unsafe_allow_html=True
 )
-
 
 wallet_options = list(
     trace_data.get(
@@ -1673,17 +1464,16 @@ wallet_options = list(
     ).keys()
 )
 
-
 if wallet_options:
 
     selected_wallet = st.selectbox(
         "Select a wallet to trace",
         wallet_options,
         format_func=lambda x:
-            f"HOP {trace_data.get('wallet_hops', {}).get(x, '?')} — "
+            f"HOP "
+            f"{trace_data.get('wallet_hops', {}).get(x, '?')} — "
             f"{format_address(x, 10)}"
     )
-
 
     if st.button(
         "Trace Transaction Path"
@@ -1695,47 +1485,45 @@ if wallet_options:
             selected_wallet
         )
 
-
         if path:
 
             st.markdown(
-                "### 🧭 Reconstructed Path"
+                "### 🧭 Reconstructed Transaction Path"
             )
 
+            for index, wallet in enumerate(path):
 
-            for i, wallet in enumerate(path):
-
-                st.write(
-                    f"**{i}.** `{wallet}`"
-                )
+                if index == 0:
+                    st.write(
+                        f"🔴 **Reported Wallet:** `{wallet}`"
+                    )
+                else:
+                    st.write(
+                        f"➡️ **Hop {index}:** `{wallet}`"
+                    )
 
         else:
 
             st.warning(
-                "No transaction path could be reconstructed."
+                "No directed transaction path could be reconstructed."
             )
 
 
 # ============================================================
-# 6. TIMELINE
+# 6 TIMELINE
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '6️⃣ 🕒 Investigation Timeline'
-    '</div>',
+    '<div class="section-title">6️⃣ 🕒 Investigation Timeline</div>',
     unsafe_allow_html=True
 )
 
-
 timeline_rows = []
-
 
 sorted_transactions = sorted(
     transactions,
     key=lambda x: get_timestamp(x)
 )
-
 
 for tx in sorted_transactions[:100]:
 
@@ -1781,7 +1569,6 @@ for tx in sorted_transactions[:100]:
             )
     })
 
-
 if timeline_rows:
 
     st.dataframe(
@@ -1795,21 +1582,18 @@ if timeline_rows:
 else:
 
     st.info(
-        "No timestamped transactions available."
+        "No transaction timeline available."
     )
 
 
 # ============================================================
-# 7. TOKEN INTELLIGENCE
+# 7 TOKEN INTELLIGENCE
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '7️⃣ 🪙 Token Transfer Intelligence'
-    '</div>',
+    '<div class="section-title">7️⃣ 🪙 Token Transfer Intelligence</div>',
     unsafe_allow_html=True
 )
-
 
 token_transactions = trace_data.get(
     "token_transactions",
@@ -1826,9 +1610,7 @@ token_types = trace_data.get(
     []
 )
 
-
 col1, col2, col3 = st.columns(3)
-
 
 with col1:
 
@@ -1837,14 +1619,12 @@ with col1:
         len(native_transactions)
     )
 
-
 with col2:
 
     st.metric(
         "Token Transfers",
         len(token_transactions)
     )
-
 
 with col3:
 
@@ -1853,33 +1633,26 @@ with col3:
         len(token_types)
     )
 
-
 if token_types:
 
     st.markdown(
         "### Detected Token Types"
     )
 
-
-    token_rows = []
-
-    for token in token_types:
-
-        token_rows.append(
-            {
-                "Token": token
-            }
-        )
-
+    token_type_rows = [
+        {
+            "Token": token
+        }
+        for token in token_types
+    ]
 
     st.dataframe(
         pd.DataFrame(
-            token_rows
+            token_type_rows
         ),
         use_container_width=True,
         hide_index=True
     )
-
 
 if token_transactions:
 
@@ -1887,9 +1660,7 @@ if token_transactions:
         "### Recent Token Transfers"
     )
 
-
     token_rows = []
-
 
     for tx in token_transactions[:100]:
 
@@ -1926,15 +1697,15 @@ if token_transactions:
                     0
                 ),
 
-            "Transaction":
+            "Tx Hash":
                 format_address(
                     tx.get(
                         "hash",
                         ""
-                    )
+                    ),
+                    10
                 )
         })
-
 
     st.dataframe(
         pd.DataFrame(
@@ -1946,19 +1717,15 @@ if token_transactions:
 
 
 # ============================================================
-# 8. TRANSACTION DNA
+# 8 TRANSACTION DNA
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '8️⃣ 🧬 Transaction DNA'
-    '</div>',
+    '<div class="section-title">8️⃣ 🧬 Transaction DNA</div>',
     unsafe_allow_html=True
 )
 
-
 col1, col2, col3, col4 = st.columns(4)
-
 
 with col1:
 
@@ -1970,7 +1737,6 @@ with col1:
         )
     )
 
-
 with col2:
 
     st.metric(
@@ -1980,7 +1746,6 @@ with col2:
             0
         )
     )
-
 
 with col3:
 
@@ -1992,7 +1757,6 @@ with col3:
         )
     )
 
-
 with col4:
 
     st.metric(
@@ -2003,36 +1767,46 @@ with col4:
         )
     )
 
-
-col1, col2, col3 = st.columns(3)
-
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
 
     st.metric(
-        "Rapid Movements",
+        "Rapid Activity Indicators",
         dna.get(
             "rapid_movements",
             0
         )
     )
 
-
 with col2:
 
     st.metric(
-        "Average Transfer",
-        f"{dna.get('average_transfer', 0):.4f}"
+        "Native Transactions",
+        dna.get(
+            "native_transaction_count",
+            0
+        )
     )
-
 
 with col3:
 
     st.metric(
-        "Total Observed Volume",
-        f"{dna.get('total_volume', 0):.4f}"
+        f"Native Volume ({native_symbol})",
+        f"{dna.get('native_volume', 0):,.6f}"
     )
 
+with col4:
+
+    st.metric(
+        f"Avg Native Transfer ({native_symbol})",
+        f"{dna.get('average_native_transfer', 0):,.6f}"
+    )
+
+st.caption(
+    "Native asset volume is calculated separately from token "
+    "amounts to avoid mixing ETH/BNB with ERC-20/BEP-20 units."
+)
 
 if dna.get(
     "behavior_indicators"
@@ -2041,7 +1815,6 @@ if dna.get(
     st.markdown(
         "### Behavioral Indicators"
     )
-
 
     for indicator in dna.get(
         "behavior_indicators",
@@ -2054,16 +1827,13 @@ if dna.get(
 
 
 # ============================================================
-# 9. PATTERNS
+# 9 PATTERNS
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '9️⃣ 🚨 Detected Fund-Flow Patterns'
-    '</div>',
+    '<div class="section-title">9️⃣ 🚨 Detected Fund-Flow Patterns</div>',
     unsafe_allow_html=True
 )
-
 
 if patterns:
 
@@ -2072,18 +1842,14 @@ if patterns:
         st.markdown(
             f"""
             <div class="finding-box">
-
                 <h4>{pattern.get('pattern', 'Unknown')}</h4>
-
                 <p>
-                <b>Severity:</b>
-                {pattern.get('severity', 'Informational')}
+                    <b>Severity:</b>
+                    {pattern.get('severity', 'Informational')}
                 </p>
-
                 <p>
-                {pattern.get('description', '')}
+                    {pattern.get('description', '')}
                 </p>
-
             </div>
             """,
             unsafe_allow_html=True
@@ -2092,31 +1858,25 @@ if patterns:
 else:
 
     st.info(
-        "No significant fund-flow patterns detected."
+        "No significant behavioral patterns detected."
     )
 
 
 # ============================================================
-# 10. ABNORMAL TRANSACTIONS
+# 10 ABNORMAL
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '🔟 Abnormal Transaction Analysis'
-    '</div>',
+    '<div class="section-title">🔟 Abnormal Transaction Analysis</div>',
     unsafe_allow_html=True
 )
 
-
 if abnormal:
 
-    abnormal_df = pd.DataFrame(
-        abnormal
-    )
-
-
     st.dataframe(
-        abnormal_df,
+        pd.DataFrame(
+            abnormal
+        ),
         use_container_width=True,
         hide_index=True
     )
@@ -2124,22 +1884,19 @@ if abnormal:
 else:
 
     st.success(
-        "No abnormal transaction indicators were detected "
+        "No abnormal transaction indicators were triggered "
         "by the current rules."
     )
 
 
 # ============================================================
-# 11. VASP
+# 11 VASP
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣1️⃣ 🏦 Potential VASP / Exchange Association'
-    '</div>',
+    '<div class="section-title">1️⃣1️⃣ 🏦 Potential VASP / Exchange Association</div>',
     unsafe_allow_html=True
 )
-
 
 if vasp:
 
@@ -2147,80 +1904,64 @@ if vasp:
         f"{len(vasp)} potential VASP association(s) identified."
     )
 
-
-    vasp_df = pd.DataFrame(
-        vasp
-    )
-
-
     st.dataframe(
-        vasp_df,
+        pd.DataFrame(
+            vasp
+        ),
         use_container_width=True,
         hide_index=True
     )
 
-
     st.warning(
-        "A potential association does not prove wallet ownership "
-        "or criminal activity. Investigators must independently "
-        "verify the attribution."
+        "Potential association does not prove wallet ownership, "
+        "exchange custody, or criminal activity. Attribution must "
+        "be independently verified."
     )
-
 
 else:
 
     st.info(
-        "No verified VASP association was identified "
-        "in the current registry."
+        "No matching VASP label was found in the currently "
+        "configured registry."
     )
 
-
     st.caption(
-        "This does not mean the investigation failed. "
-        "Fund-flow paths and behavioral indicators remain "
-        "useful investigation leads."
+        "This does not mean the wallet has no exchange connection. "
+        "It only means the current registry did not return a match."
     )
 
 
 # ============================================================
-# 12. WHY THIS WALLET MATTERS
+# 12 WHY WALLET MATTERS
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣2️⃣ 🎯 Why This Wallet Matters'
-    '</div>',
+    '<div class="section-title">1️⃣2️⃣ 🎯 Why This Wallet Matters</div>',
     unsafe_allow_html=True
 )
 
-
-findings = create_investigation_finding(
+findings = create_investigation_findings(
     trace_data,
     dna,
-    abnormal,
     vasp,
     risk
 )
 
-
 for finding in findings:
 
-    st.markdown(
+    st.write(
         f"• {finding}"
     )
 
 
 # ============================================================
-# 13. INVESTIGATION CONCLUSION
+# 13 CONCLUSION
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣3️⃣ 🧾 Investigation Conclusion'
-    '</div>',
+    '<div class="section-title">1️⃣3️⃣ 🧾 Investigation Conclusion</div>',
     unsafe_allow_html=True
 )
-
 
 if risk_level == "HIGH":
 
@@ -2241,11 +1982,10 @@ elif risk_level == "MEDIUM":
 else:
 
     conclusion = (
-        f"The analyzed reported wallet currently shows "
-        f"limited risk indicators with an analytical "
-        f"risk score of {score}/100. "
+        f"The analyzed reported wallet currently exhibits "
+        f"limited blockchain risk indicators with an "
+        f"analytical risk score of {score}/100. "
     )
-
 
 if trace_data.get(
     "max_hop",
@@ -2253,10 +1993,9 @@ if trace_data.get(
 ) >= 2:
 
     conclusion += (
-        f"Fund-flow relationships were traced across up to "
-        f"{trace_data.get('max_hop', 0)} hops. "
+        f"Transaction relationships were reconstructed across "
+        f"up to {trace_data.get('max_hop', 0)} hops. "
     )
-
 
 if dna.get(
     "rapid_movements",
@@ -2264,39 +2003,34 @@ if dna.get(
 ) >= 5:
 
     conclusion += (
-        "Rapid fund movement indicators were observed. "
+        "Repeated rapid transaction activity indicators "
+        "were observed. "
     )
-
 
 if vasp:
 
     conclusion += (
-        "A potential VASP association was identified and "
-        "should be independently verified. "
+        "Potential VASP association information was identified "
+        "and should be independently verified. "
     )
 
 else:
 
     conclusion += (
-        "No verified VASP association was identified "
-        "in the current registry. "
+        "No matching VASP label was found in the currently "
+        "configured registry. "
     )
 
-
 conclusion += (
-    "The results represent analytical investigation leads "
-    "and should not be treated as proof of criminal activity."
+    "These results are analytical investigation leads and "
+    "should not be interpreted as proof of criminal activity."
 )
-
 
 st.markdown(
     f"""
     <div class="finding-box">
-
         <h3>🔎 Final Finding</h3>
-
         <p>{conclusion}</p>
-
     </div>
     """,
     unsafe_allow_html=True
@@ -2304,21 +2038,17 @@ st.markdown(
 
 
 # ============================================================
-# 14. TRANSACTION EVIDENCE
+# 14 TRANSACTION EVIDENCE
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣4️⃣ 📋 Transaction Evidence'
-    '</div>',
+    '<div class="section-title">1️⃣4️⃣ 📋 Transaction Evidence</div>',
     unsafe_allow_html=True
 )
-
 
 if transactions:
 
     evidence_rows = []
-
 
     for tx in transactions[:100]:
 
@@ -2373,7 +2103,6 @@ if transactions:
                 )
         })
 
-
     st.dataframe(
         pd.DataFrame(
             evidence_rows
@@ -2384,16 +2113,13 @@ if transactions:
 
 
 # ============================================================
-# 15. INVESTIGATION SUMMARY
+# 15 SUMMARY
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣5️⃣ 📌 Investigation Summary'
-    '</div>',
+    '<div class="section-title">1️⃣5️⃣ 📌 Investigation Summary</div>',
     unsafe_allow_html=True
 )
-
 
 summary = {
 
@@ -2401,10 +2127,22 @@ summary = {
         start_wallet,
 
     "Blockchain":
-        blockchain,
+        selected_chain,
 
     "Transactions Analyzed":
         len(transactions),
+
+    "Native Transactions":
+        dna.get(
+            "native_transaction_count",
+            0
+        ),
+
+    "Token Transactions":
+        dna.get(
+            "token_transaction_count",
+            0
+        ),
 
     "Connected Wallets":
         len(
@@ -2420,17 +2158,26 @@ summary = {
             0
         ),
 
-    "Rapid Movements":
+    "Fan-In":
+        dna.get(
+            "fan_in",
+            0
+        ),
+
+    "Fan-Out":
+        dna.get(
+            "fan_out",
+            0
+        ),
+
+    "Rapid Activity Indicators":
         dna.get(
             "rapid_movements",
             0
         ),
 
-    "Token Transfers":
-        trace_data.get(
-            "token_count",
-            0
-        ),
+    f"Native Volume ({native_symbol})":
+        f"{dna.get('native_volume', 0):,.6f}",
 
     "Token Types":
         len(
@@ -2450,36 +2197,29 @@ summary = {
         risk_level
 }
 
-
-summary_df = pd.DataFrame(
-    list(
-        summary.items()
-    ),
-    columns=[
-        "Investigation Metric",
-        "Result"
-    ]
-)
-
-
 st.dataframe(
-    summary_df,
+    pd.DataFrame(
+        list(
+            summary.items()
+        ),
+        columns=[
+            "Investigation Metric",
+            "Result"
+        ]
+    ),
     use_container_width=True,
     hide_index=True
 )
 
 
 # ============================================================
-# 16. PDF REPORT
+# 16 REPORT
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    '1️⃣6️⃣ 📄 Investigation Report'
-    '</div>',
+    '<div class="section-title">1️⃣6️⃣ 📄 Investigation Report</div>',
     unsafe_allow_html=True
 )
-
 
 if st.button(
     "📄 Generate Investigation Report"
@@ -2489,7 +2229,7 @@ if st.button(
 
         pdf_path = generate_pdf_report(
             start_wallet,
-            blockchain,
+            selected_chain,
             trace_data,
             dna,
             patterns,
@@ -2498,25 +2238,29 @@ if st.button(
             risk
         )
 
-
         with open(
             pdf_path,
             "rb"
         ) as pdf_file:
 
-            st.download_button(
-                label="⬇️ Download Investigation Report",
-                data=pdf_file,
-                file_name="CryptoShield_Investigation_Report.pdf",
-                mime="application/pdf"
-            )
+            pdf_data = pdf_file.read()
 
+        st.download_button(
+            label="⬇️ Download Investigation Report",
+            data=pdf_data,
+            file_name="CryptoShield_Investigation_Report.pdf",
+            mime="application/pdf"
+        )
 
-    except TypeError:
+    except TypeError as e:
 
         st.warning(
-            "Your current report_generator.py uses a different "
-            "function signature."
+            "Your report_generator.py function signature "
+            "does not match the current app."
+        )
+
+        st.code(
+            str(e)
         )
 
     except Exception as e:
@@ -2532,14 +2276,15 @@ if st.button(
 
 st.divider()
 
-
 st.caption(
     """
     ⚠️ DISCLAIMER:
-    CryptoShield is an analytical blockchain investigation prototype.
-    Risk scores, behavioral indicators and VASP associations are not
-    criminal determinations. Wallet ownership and attribution must be
-    independently verified using appropriate investigative procedures
-    and authoritative evidence.
+    CryptoShield is a blockchain investigation and analytical
+    intelligence prototype. Risk scores, behavioral indicators,
+    fund-flow relationships, and potential VASP associations are
+    investigation leads only. They do not establish wallet ownership,
+    identity, exchange custody, or criminal activity. Investigators
+    must independently verify attribution using authoritative evidence
+    and lawful investigative procedures.
     """
 )
