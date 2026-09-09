@@ -3,21 +3,32 @@ VASP_REGISTRY = {
     "0x1111111111111111111111111111111111111111": {
         "name": "Demo Exchange Alpha",
         "type": "Centralized Exchange",
-        "country": "Demo"
+        "country": "Demo",
+        "source": "CryptoShield Demo Registry"
     },
 
     "0x2222222222222222222222222222222222222222": {
         "name": "Demo Exchange Beta",
         "type": "Centralized Exchange",
-        "country": "Demo"
+        "country": "Demo",
+        "source": "CryptoShield Demo Registry"
     },
 
     "0x3333333333333333333333333333333333333333": {
         "name": "Demo Exchange Gamma",
         "type": "Centralized Exchange",
-        "country": "Demo"
+        "country": "Demo",
+        "source": "CryptoShield Demo Registry"
     }
 }
+
+
+def normalize_address(address):
+
+    if not address:
+        return ""
+
+    return address.strip().lower()
 
 
 def detect_vasp(transactions):
@@ -30,42 +41,57 @@ def detect_vasp(transactions):
 
     for tx in transactions:
 
-        sender = tx.get("from", "").lower()
-        receiver = tx.get("to", "").lower()
+        sender = normalize_address(
+            tx.get("from", "")
+        )
 
-        # Check sender
-        if sender in VASP_REGISTRY:
+        receiver = normalize_address(
+            tx.get("to", "")
+        )
 
-            if sender not in found:
+        participants = [
+            ("sender", sender),
+            ("receiver", receiver)
+        ]
 
-                info = VASP_REGISTRY[sender]
+        for role, address in participants:
 
-                results.append({
-                    "address": tx.get("from", ""),
-                    "name": info["name"],
-                    "type": info["type"],
-                    "country": info["country"],
-                    "confidence": "Demo registry match"
-                })
+            if not address:
+                continue
 
-                found.add(sender)
+            if address not in VASP_REGISTRY:
+                continue
 
-        # Check receiver
-        if receiver in VASP_REGISTRY:
+            if address in found:
+                continue
 
-            if receiver not in found:
+            info = VASP_REGISTRY[address]
 
-                info = VASP_REGISTRY[receiver]
+            results.append(
+                {
+                    "address": address,
+                    "name": info.get(
+                        "name",
+                        "Unknown VASP"
+                    ),
+                    "type": info.get(
+                        "type",
+                        "Unknown"
+                    ),
+                    "country": info.get(
+                        "country",
+                        "Unknown"
+                    ),
+                    "source": info.get(
+                        "source",
+                        "Unknown"
+                    ),
+                    "transaction_role": role,
+                    "confidence": "Potential association"
+                }
+            )
 
-                results.append({
-                    "address": tx.get("to", ""),
-                    "name": info["name"],
-                    "type": info["type"],
-                    "country": info["country"],
-                    "confidence": "Demo registry match"
-                })
-
-                found.add(receiver)
+            found.add(address)
 
     return results
 
