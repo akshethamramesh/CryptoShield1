@@ -1,16 +1,20 @@
-# ============================================================
-# CryptoShield - Risk Engine V3
-# ============================================================
-#
-# Purpose:
-# Calculate an explainable blockchain risk score
-# based on multiple observable transaction indicators.
-#
-# IMPORTANT:
-# This score is an analytical indicator.
-# It does NOT prove criminal activity or wallet ownership.
-# ============================================================
+"""
+CryptoShield Risk Engine V3
 
+Purpose:
+    Calculate an explainable blockchain analytical risk score.
+
+Important:
+    This score is NOT a probability of fraud.
+    It is NOT a legal determination.
+    It represents the strength of configured blockchain
+    risk indicators.
+"""
+
+
+# ============================================================
+# RISK ENGINE V3
+# ============================================================
 
 def calculate_risk_v3(
     transaction_count=0,
@@ -24,284 +28,354 @@ def calculate_risk_v3(
     token_transactions=0,
     token_types=0
 ):
+    """
+    Calculate an explainable risk score out of 100.
 
-    score = 0
-    factors = []
+    Maximum possible contribution:
+
+        Transaction Activity  = 10
+        Connected Network     = 10
+        Rapid Movement        = 10
+        Abnormal Activity     = 15
+        Fan-Out                = 10
+        Fan-In                 = 10
+        Multi-Hop              = 10
+        Token Activity        = 10
+        Token Diversity       = 5
+        VASP Association      = 10
+
+        TOTAL                  = 100
+
+    Returns:
+
+        score
+        level
+        factors
+
+    Example:
+
+        score, level, factors = calculate_risk_v3(...)
+    """
+
+    # --------------------------------------------------------
+    # Make sure numeric inputs are safe
+    # --------------------------------------------------------
+
+    try:
+        transaction_count = int(transaction_count or 0)
+    except Exception:
+        transaction_count = 0
+
+    try:
+        connected_wallets = int(connected_wallets or 0)
+    except Exception:
+        connected_wallets = 0
+
+    try:
+        rapid_movements = int(rapid_movements or 0)
+    except Exception:
+        rapid_movements = 0
+
+    try:
+        abnormal_alerts = int(abnormal_alerts or 0)
+    except Exception:
+        abnormal_alerts = 0
+
+    try:
+        fan_in = int(fan_in or 0)
+    except Exception:
+        fan_in = 0
+
+    try:
+        fan_out = int(fan_out or 0)
+    except Exception:
+        fan_out = 0
+
+    try:
+        max_hop = int(max_hop or 0)
+    except Exception:
+        max_hop = 0
+
+    try:
+        vasp_matches = int(vasp_matches or 0)
+    except Exception:
+        vasp_matches = 0
+
+    try:
+        token_transactions = int(token_transactions or 0)
+    except Exception:
+        token_transactions = 0
+
+    try:
+        token_types = int(token_types or 0)
+    except Exception:
+        token_types = 0
 
 
     # ========================================================
-    # 1. TRANSACTION ACTIVITY
-    # Maximum: 10 points
+    # INDIVIDUAL RISK FACTORS
     # ========================================================
 
-    if transaction_count >= 100:
+    # --------------------------------------------------------
+    # 1. TRANSACTION ACTIVITY - MAX 10
+    # --------------------------------------------------------
 
-        score += 10
+    if transaction_count >= 1000:
+        transaction_score = 10
 
-        factors.append({
-            "indicator": "High transaction activity",
-            "points": 10
-        })
+    elif transaction_count >= 500:
+        transaction_score = 8
+
+    elif transaction_count >= 100:
+        transaction_score = 6
 
     elif transaction_count >= 50:
+        transaction_score = 3
 
-        score += 5
-
-        factors.append({
-            "indicator": "Moderate transaction activity",
-            "points": 5
-        })
+    else:
+        transaction_score = 0
 
 
-    # ========================================================
-    # 2. CONNECTED WALLET NETWORK
-    # Maximum: 10 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 2. CONNECTED NETWORK - MAX 10
+    # --------------------------------------------------------
 
-    if connected_wallets >= 20:
+    if connected_wallets >= 100:
+        network_score = 10
 
-        score += 10
+    elif connected_wallets >= 50:
+        network_score = 8
 
-        factors.append({
-            "indicator": "Large connected wallet network",
-            "points": 10
-        })
+    elif connected_wallets >= 20:
+        network_score = 6
 
     elif connected_wallets >= 10:
+        network_score = 3
 
-        score += 5
-
-        factors.append({
-            "indicator": "Moderate connected wallet network",
-            "points": 5
-        })
+    else:
+        network_score = 0
 
 
-    # ========================================================
-    # 3. RAPID FUND MOVEMENT
-    # Maximum: 10 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 3. RAPID MOVEMENT - MAX 10
+    # --------------------------------------------------------
 
-    if rapid_movements >= 10:
+    if rapid_movements >= 50:
+        rapid_score = 10
 
-        score += 10
+    elif rapid_movements >= 20:
+        rapid_score = 8
 
-        factors.append({
-            "indicator": "Frequent rapid fund movement",
-            "points": 10
-        })
+    elif rapid_movements >= 10:
+        rapid_score = 6
 
     elif rapid_movements >= 5:
+        rapid_score = 3
 
-        score += 6
-
-        factors.append({
-            "indicator": "Rapid fund movement detected",
-            "points": 6
-        })
+    else:
+        rapid_score = 0
 
 
-    # ========================================================
-    # 4. ABNORMAL TRANSACTION INDICATORS
-    # Maximum: 15 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 4. ABNORMAL ACTIVITY - MAX 15
+    # --------------------------------------------------------
 
-    if abnormal_alerts >= 10:
+    if abnormal_alerts >= 50:
+        abnormal_score = 15
 
-        score += 15
+    elif abnormal_alerts >= 20:
+        abnormal_score = 12
 
-        factors.append({
-            "indicator": "Multiple abnormal transaction indicators",
-            "points": 15
-        })
+    elif abnormal_alerts >= 10:
+        abnormal_score = 8
 
     elif abnormal_alerts >= 5:
+        abnormal_score = 5
 
-        score += 10
+    elif abnormal_alerts >= 1:
+        abnormal_score = 2
 
-        factors.append({
-            "indicator": "Several abnormal transaction indicators",
-            "points": 10
-        })
-
-    elif abnormal_alerts > 0:
-
-        score += 5
-
-        factors.append({
-            "indicator": "Abnormal transaction indicator detected",
-            "points": 5
-        })
+    else:
+        abnormal_score = 0
 
 
-    # ========================================================
-    # 5. FAN-OUT
-    # One wallet → many wallets
-    # Maximum: 10 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 5. FAN-OUT - MAX 10
+    # --------------------------------------------------------
 
-    if fan_out >= 10:
+    if fan_out >= 50:
+        fanout_score = 10
 
-        score += 10
+    elif fan_out >= 20:
+        fanout_score = 8
 
-        factors.append({
-            "indicator": "Very high fan-out behavior",
-            "points": 10
-        })
+    elif fan_out >= 10:
+        fanout_score = 6
 
     elif fan_out >= 5:
+        fanout_score = 3
 
-        score += 6
-
-        factors.append({
-            "indicator": "High fan-out behavior",
-            "points": 6
-        })
+    else:
+        fanout_score = 0
 
 
-    # ========================================================
-    # 6. FAN-IN
-    # Many wallets → one wallet
-    # Maximum: 10 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 6. FAN-IN - MAX 10
+    # --------------------------------------------------------
 
-    if fan_in >= 10:
+    if fan_in >= 50:
+        fanin_score = 10
 
-        score += 10
+    elif fan_in >= 20:
+        fanin_score = 8
 
-        factors.append({
-            "indicator": "Very high fan-in behavior",
-            "points": 10
-        })
+    elif fan_in >= 10:
+        fanin_score = 6
 
     elif fan_in >= 5:
+        fanin_score = 3
 
-        score += 6
-
-        factors.append({
-            "indicator": "High fan-in behavior",
-            "points": 6
-        })
+    else:
+        fanin_score = 0
 
 
-    # ========================================================
-    # 7. MULTI-HOP FUND MOVEMENT
-    # Maximum: 10 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 7. MULTI-HOP - MAX 10
+    # --------------------------------------------------------
 
-    if max_hop >= 3:
+    if max_hop >= 4:
+        hop_score = 10
 
-        score += 10
-
-        factors.append({
-            "indicator": "Deep multi-hop fund movement",
-            "points": 10
-        })
+    elif max_hop >= 3:
+        hop_score = 8
 
     elif max_hop >= 2:
+        hop_score = 6
 
-        score += 7
+    elif max_hop >= 1:
+        hop_score = 2
 
-        factors.append({
-            "indicator": "Multi-hop fund movement detected",
-            "points": 7
-        })
+    else:
+        hop_score = 0
 
 
-    # ========================================================
-    # 8. TOKEN TRANSFER ACTIVITY
-    # Maximum: 10 points
-    #
-    # NOTE:
-    # Token activity alone is NOT proof of fraud.
-    # It is only an analytical indicator.
-    # ========================================================
+    # --------------------------------------------------------
+    # 8. TOKEN ACTIVITY - MAX 10
+    # --------------------------------------------------------
 
-    if token_transactions >= 100:
+    if token_transactions >= 500:
+        token_score = 10
 
-        score += 10
+    elif token_transactions >= 200:
+        token_score = 8
 
-        factors.append({
-            "indicator": "High token-transfer activity",
-            "points": 10
-        })
+    elif token_transactions >= 100:
+        token_score = 6
 
     elif token_transactions >= 50:
+        token_score = 4
 
-        score += 6
+    elif token_transactions >= 10:
+        token_score = 2
 
-        factors.append({
-            "indicator": "Moderate token-transfer activity",
-            "points": 6
-        })
-
-    elif token_transactions > 0:
-
-        score += 3
-
-        factors.append({
-            "indicator": "Token-transfer activity detected",
-            "points": 3
-        })
+    else:
+        token_score = 0
 
 
-    # ========================================================
-    # 9. TOKEN DIVERSITY
-    # Maximum: 5 points
-    # ========================================================
+    # --------------------------------------------------------
+    # 9. TOKEN DIVERSITY - MAX 5
+    # --------------------------------------------------------
 
-    if token_types >= 3:
+    if token_types >= 20:
+        token_type_score = 5
 
-        score += 5
+    elif token_types >= 10:
+        token_type_score = 4
 
-        factors.append({
-            "indicator": "Multiple token types observed",
-            "points": 5
-        })
+    elif token_types >= 5:
+        token_type_score = 3
 
     elif token_types >= 2:
+        token_type_score = 1
 
-        score += 3
-
-        factors.append({
-            "indicator": "Multiple token types observed",
-            "points": 3
-        })
+    else:
+        token_type_score = 0
 
 
-    # ========================================================
-    # 10. POTENTIAL VASP ASSOCIATION
-    # Maximum: 10 points
-    #
-    # NOTE:
-    # This means potential association only.
-    # It does NOT prove wallet ownership.
-    # ========================================================
+    # --------------------------------------------------------
+    # 10. VASP ASSOCIATION - MAX 10
+    # --------------------------------------------------------
 
-    if vasp_matches >= 2:
+    if vasp_matches >= 5:
+        vasp_score = 10
 
-        score += 10
+    elif vasp_matches >= 3:
+        vasp_score = 8
 
-        factors.append({
-            "indicator": "Multiple potential VASP associations",
-            "points": 10
-        })
+    elif vasp_matches >= 2:
+        vasp_score = 6
 
-    elif vasp_matches == 1:
+    elif vasp_matches >= 1:
+        vasp_score = 4
 
-        score += 5
-
-        factors.append({
-            "indicator": "Potential VASP association identified",
-            "points": 5
-        })
+    else:
+        vasp_score = 0
 
 
     # ========================================================
-    # FINAL SCORE
+    # EXPLAINABLE FACTOR DICTIONARY
     # ========================================================
 
-    score = min(score, 100)
+    factors = {
+
+        "Transaction Activity":
+            transaction_score,
+
+        "Connected Network":
+            network_score,
+
+        "Rapid Fund Movement":
+            rapid_score,
+
+        "Abnormal Activity":
+            abnormal_score,
+
+        "Fan-Out / Fund Splitting":
+            fanout_score,
+
+        "Fan-In / Fund Consolidation":
+            fanin_score,
+
+        "Multi-Hop Fund Flow":
+            hop_score,
+
+        "Token Activity":
+            token_score,
+
+        "Token Diversity":
+            token_type_score,
+
+        "Potential VASP Association":
+            vasp_score
+    }
+
+
+    # ========================================================
+    # TOTAL SCORE
+    # ========================================================
+
+    score = sum(
+        factors.values()
+    )
+
+    # Safety clamp
+    score = max(
+        0,
+        min(
+            100,
+            score
+        )
+    )
 
 
     # ========================================================
@@ -321,24 +395,21 @@ def calculate_risk_v3(
         level = "LOW"
 
 
-    # ========================================================
-    # RETURN
-    # ========================================================
-
-    return score, level, factors
+    return (
+        score,
+        level,
+        factors
+    )
 
 
 # ============================================================
 # BACKWARD COMPATIBILITY
 # ============================================================
-#
-# If older code calls calculate_risk(), it will still work.
-# ============================================================
 
 def calculate_risk(
     transaction_count=0,
     connected_wallets=0,
-    rapid_movements=0,
+    rapid_transfers=False,
     abnormal_alerts=0,
     fan_in=0,
     fan_out=0,
@@ -347,68 +418,53 @@ def calculate_risk(
     token_transactions=0,
     token_types=0
 ):
+    """
+    Backward-compatible wrapper.
+
+    Older versions of CryptoShield may call calculate_risk().
+    """
+
+    # Convert old boolean rapid_transfers input
+    if isinstance(
+        rapid_transfers,
+        bool
+    ):
+
+        rapid_movements = (
+            5
+            if rapid_transfers
+            else 0
+        )
+
+    else:
+
+        try:
+            rapid_movements = int(
+                rapid_transfers or 0
+            )
+        except Exception:
+            rapid_movements = 0
+
 
     return calculate_risk_v3(
+
         transaction_count=transaction_count,
+
         connected_wallets=connected_wallets,
+
         rapid_movements=rapid_movements,
+
         abnormal_alerts=abnormal_alerts,
+
         fan_in=fan_in,
+
         fan_out=fan_out,
+
         max_hop=max_hop,
+
         vasp_matches=vasp_matches,
+
         token_transactions=token_transactions,
+
         token_types=token_types
     )
-
-
-# ============================================================
-# TEST
-# ============================================================
-
-if __name__ == "__main__":
-
-    score, level, factors = calculate_risk_v3(
-
-        transaction_count=150,
-
-        connected_wallets=25,
-
-        rapid_movements=12,
-
-        abnormal_alerts=8,
-
-        fan_in=7,
-
-        fan_out=11,
-
-        max_hop=2,
-
-        vasp_matches=1,
-
-        token_transactions=120,
-
-        token_types=4
-    )
-
-
-    print("=" * 50)
-    print("CryptoShield Risk Engine Test")
-    print("=" * 50)
-
-    print(
-        f"Risk Score : {score}/100"
-    )
-
-    print(
-        f"Risk Level : {level}"
-    )
-
-    print("\nRisk Factors:")
-
-    for factor in factors:
-
-        print(
-            f"- {factor['indicator']}: "
-            f"+{factor['points']}"
-        )

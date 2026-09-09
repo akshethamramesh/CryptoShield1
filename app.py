@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import tempfile
 import os
 
@@ -29,10 +28,11 @@ st.set_page_config(
 
 
 # ============================================================
-# CUSTOM CSS
+# CSS
 # ============================================================
 
-st.markdown("""
+st.markdown(
+    """
 <style>
 
 .block-container {
@@ -41,20 +41,20 @@ st.markdown("""
 }
 
 .hero {
-    padding: 28px;
-    border-radius: 18px;
+    padding: 30px;
+    border-radius: 20px;
     background: linear-gradient(
         135deg,
-        rgba(30, 41, 59, 0.95),
-        rgba(15, 23, 42, 0.98)
+        #111827,
+        #1e293b
     );
-    border: 1px solid rgba(148,163,184,0.2);
+    border: 1px solid #334155;
     margin-bottom: 25px;
 }
 
 .hero h1 {
+    font-size: 44px;
     margin-bottom: 5px;
-    font-size: 42px;
 }
 
 .hero p {
@@ -62,104 +62,83 @@ st.markdown("""
     font-size: 17px;
 }
 
-.metric-card {
-    padding: 18px;
-    border-radius: 14px;
-    background: rgba(15,23,42,0.7);
-    border: 1px solid rgba(148,163,184,0.18);
-    margin-bottom: 10px;
-}
-
-.metric-title {
-    color: #94a3b8;
-    font-size: 14px;
-}
-
-.metric-value {
-    font-size: 25px;
-    font-weight: 700;
-}
-
-.risk-high {
-    padding: 22px;
-    border-radius: 16px;
-    background: rgba(127,29,29,0.25);
-    border: 1px solid rgba(248,113,113,0.4);
-    margin-bottom: 15px;
-}
-
-.risk-medium {
-    padding: 22px;
-    border-radius: 16px;
-    background: rgba(120,53,15,0.25);
-    border: 1px solid rgba(251,191,36,0.4);
-    margin-bottom: 15px;
-}
-
-.risk-low {
-    padding: 22px;
-    border-radius: 16px;
-    background: rgba(20,83,45,0.25);
-    border: 1px solid rgba(74,222,128,0.4);
-    margin-bottom: 15px;
-}
-
-.fraud-card {
-    padding: 22px;
-    border-radius: 16px;
-    background: rgba(30,41,59,0.65);
-    border: 1px solid rgba(148,163,184,0.18);
+.section-title {
+    margin-top: 30px;
     margin-bottom: 15px;
 }
 
 .info-card {
-    padding: 20px;
-    border-radius: 14px;
-    background: rgba(30,41,59,0.55);
-    border: 1px solid rgba(148,163,184,0.15);
-}
-
-.section-title {
-    margin-top: 28px;
+    padding: 22px;
+    border-radius: 16px;
+    background: #111827;
+    border: 1px solid #334155;
     margin-bottom: 15px;
 }
 
-.small-text {
-    color: #94a3b8;
-    font-size: 13px;
-}
-
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
 # SESSION STATE
 # ============================================================
 
-defaults = {
-    "investigation_done": False,
-    "trace_data": None,
-    "dna": None,
-    "patterns": [],
-    "abnormal": [],
-    "vasp": [],
-    "risk": None,
-    "fraud": None,
-    "reported_wallet": "",
-    "blockchain": "Ethereum",
-    "max_hops": 2
-}
+if "investigation_done" not in st.session_state:
+    st.session_state.investigation_done = False
 
-for key, value in defaults.items():
+if "trace_data" not in st.session_state:
+    st.session_state.trace_data = None
 
-    if key not in st.session_state:
-        st.session_state[key] = value
+if "dna" not in st.session_state:
+    st.session_state.dna = None
+
+if "patterns" not in st.session_state:
+    st.session_state.patterns = []
+
+if "abnormal" not in st.session_state:
+    st.session_state.abnormal = []
+
+if "vasp" not in st.session_state:
+    st.session_state.vasp = []
+
+if "risk" not in st.session_state:
+    st.session_state.risk = None
+
+if "fraud" not in st.session_state:
+    st.session_state.fraud = None
+
+if "reported_wallet" not in st.session_state:
+    st.session_state.reported_wallet = ""
+
+if "blockchain" not in st.session_state:
+    st.session_state.blockchain = "Ethereum"
+
+if "max_hops" not in st.session_state:
+    st.session_state.max_hops = 2
 
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
+
+def short_address(address):
+
+    if not address:
+        return "Unknown"
+
+    address = str(address)
+
+    if len(address) <= 14:
+        return address
+
+    return (
+        address[:7]
+        + "..."
+        + address[-5:]
+    )
+
 
 def native_symbol(chain):
 
@@ -169,24 +148,17 @@ def native_symbol(chain):
     return "ETH"
 
 
-def short_address(address):
-
-    if not address:
-        return "Unknown"
-
-    if len(address) < 12:
-        return address
-
-    return f"{address[:6]}...{address[-6:]}"
-
-
-def detect_patterns(transactions, trace_data, dna):
+def detect_patterns(
+    transactions,
+    trace_data,
+    dna
+):
 
     patterns = []
 
     transaction_count = dna.get(
         "transaction_count",
-        len(transactions)
+        0
     )
 
     fan_in = dna.get(
@@ -219,14 +191,16 @@ def detect_patterns(transactions, trace_data, dna):
         []
     )
 
+
     if transaction_count >= 100:
 
         patterns.append({
             "pattern": "High transaction activity",
             "severity": "Medium",
             "description":
-                "The wallet shows a high number of observed blockchain transactions."
+                "High blockchain transaction activity was observed."
         })
+
 
     if fan_out >= 5:
 
@@ -234,8 +208,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Fund splitting / fan-out",
             "severity": "High",
             "description":
-                "Funds are distributed toward multiple destination wallets."
+                "The wallet interacted with multiple outgoing destinations."
         })
+
 
     if fan_in >= 5:
 
@@ -243,8 +218,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Fund consolidation / fan-in",
             "severity": "High",
             "description":
-                "The wallet receives funds from multiple source wallets."
+                "The wallet received funds from multiple incoming sources."
         })
+
 
     if rapid_movements >= 5:
 
@@ -252,8 +228,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Rapid fund movement",
             "severity": "High",
             "description":
-                "Multiple wallet activities occur within short time intervals."
+                "Multiple wallet movements occurred within short time intervals."
         })
+
 
     if max_hop >= 2:
 
@@ -261,8 +238,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Multi-hop fund flow",
             "severity": "High",
             "description":
-                "Observed funds can propagate through multiple connected wallets."
+                "The observed fund network extends across multiple wallet hops."
         })
+
 
     if token_count >= 50:
 
@@ -270,8 +248,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Significant token activity",
             "severity": "Medium",
             "description":
-                "The investigation includes a significant number of token transfers."
+                "Significant token transfer activity was observed."
         })
+
 
     if len(wallets) >= 20:
 
@@ -279,8 +258,9 @@ def detect_patterns(transactions, trace_data, dna):
             "pattern": "Large connected wallet network",
             "severity": "Medium",
             "description":
-                "The reported wallet is connected to a relatively large observed network."
+                "The reported wallet is connected to a large observed wallet network."
         })
+
 
     return patterns
 
@@ -330,35 +310,41 @@ def create_investigation_findings(
         0
     )
 
+
     if transaction_count >= 100:
 
         findings.append(
             "High transaction activity was observed."
         )
 
+
     if max_hop >= 2:
 
         findings.append(
-            "Funds can be traced across multiple wallet hops."
+            "Multi-hop wallet connectivity was observed."
         )
+
 
     if rapid >= 5:
 
         findings.append(
-            "Rapid wallet activity was detected."
+            "Rapid fund movement indicators were detected."
         )
+
 
     if fan_out >= 5:
 
         findings.append(
-            "Multiple outgoing destinations indicate fan-out behaviour."
+            "Multiple outgoing destinations were observed."
         )
+
 
     if fan_in >= 5:
 
         findings.append(
-            "Multiple incoming sources indicate fan-in behaviour."
+            "Multiple incoming sources were observed."
         )
+
 
     if token_count > 0:
 
@@ -366,22 +352,26 @@ def create_investigation_findings(
             f"{token_count} token transfers were observed."
         )
 
+
     if vasp:
 
         findings.append(
-            "Potential VASP/exchange associations were detected from the configured registry."
+            "Potential VASP/exchange associations were identified "
+            "from the configured registry."
         )
+
 
     if fraud_score >= 70:
 
         findings.append(
-            "Multiple behavioural indicators combine into a high fraud-linked activity score."
+            "Multiple behavioural indicators combine into a "
+            "high fraud-linked behaviour score."
         )
 
     elif fraud_score >= 40:
 
         findings.append(
-            "Several behavioural indicators require additional investigation."
+            "Several behavioural indicators require further investigation."
         )
 
     else:
@@ -390,6 +380,7 @@ def create_investigation_findings(
             "Limited fraud-linked behavioural indicators were observed."
         )
 
+
     return findings
 
 
@@ -397,7 +388,9 @@ def create_investigation_findings(
 # NETWORK GRAPH
 # ============================================================
 
-def create_network_graph(trace_data):
+def create_network_graph(
+    trace_data
+):
 
     wallets = trace_data.get(
         "visited_wallets",
@@ -419,6 +412,7 @@ def create_network_graph(trace_data):
         []
     )
 
+
     net = Network(
         height="650px",
         width="100%",
@@ -429,7 +423,11 @@ def create_network_graph(trace_data):
 
     net.barnes_hut()
 
-    # Add wallet nodes
+
+    # --------------------------------------------------------
+    # NODES
+    # --------------------------------------------------------
+
     for wallet in wallets:
 
         hop = hop_map.get(
@@ -441,7 +439,10 @@ def create_network_graph(trace_data):
 
             net.add_node(
                 wallet,
-                label=f"REPORTED\n{short_address(wallet)}",
+                label=(
+                    "REPORTED\n"
+                    + short_address(wallet)
+                ),
                 title="Victim-reported suspect wallet",
                 shape="box",
                 size=30
@@ -451,13 +452,20 @@ def create_network_graph(trace_data):
 
             net.add_node(
                 wallet,
-                label=f"HOP {hop}\n{short_address(wallet)}",
+                label=(
+                    f"HOP {hop}\n"
+                    + short_address(wallet)
+                ),
                 title=f"Observed wallet at hop {hop}",
                 shape="dot",
                 size=20
             )
 
-    # Add edges
+
+    # --------------------------------------------------------
+    # EDGES
+    # --------------------------------------------------------
+
     added_edges = set()
 
     for tx in transactions:
@@ -475,40 +483,52 @@ def create_network_graph(trace_data):
         if not sender or not receiver:
             continue
 
-        sender_match = None
-        receiver_match = None
+
+        sender_node = None
+        receiver_node = None
+
 
         for wallet in wallets:
 
             if wallet.lower() == sender.lower():
-                sender_match = wallet
+                sender_node = wallet
 
             if wallet.lower() == receiver.lower():
-                receiver_match = wallet
+                receiver_node = wallet
 
-        if not sender_match or not receiver_match:
+
+        if not sender_node or not receiver_node:
             continue
 
+
         edge_key = (
-            sender_match.lower(),
-            receiver_match.lower()
+            sender_node.lower(),
+            receiver_node.lower()
         )
+
 
         if edge_key in added_edges:
             continue
 
-        added_edges.add(edge_key)
+
+        added_edges.add(
+            edge_key
+        )
+
 
         net.add_edge(
-            sender_match,
-            receiver_match,
+            sender_node,
+            receiver_node,
             arrows="to"
         )
+
 
     return net
 
 
-def render_network_graph(trace_data):
+def render_network_graph(
+    trace_data
+):
 
     try:
 
@@ -521,17 +541,22 @@ def render_network_graph(trace_data):
             suffix=".html"
         ) as tmp:
 
-            path = tmp.name
+            html_path = tmp.name
 
-        net.save_graph(path)
+
+        net.save_graph(
+            html_path
+        )
+
 
         with open(
-            path,
+            html_path,
             "r",
             encoding="utf-8"
         ) as file:
 
             html = file.read()
+
 
         components.html(
             html,
@@ -539,15 +564,21 @@ def render_network_graph(trace_data):
             scrolling=True
         )
 
+
         try:
-            os.remove(path)
+
+            os.remove(
+                html_path
+            )
+
         except Exception:
             pass
+
 
     except Exception as e:
 
         st.error(
-            f"Unable to render network graph: {e}"
+            f"Network graph error: {e}"
         )
 
 
@@ -555,7 +586,8 @@ def render_network_graph(trace_data):
 # HEADER
 # ============================================================
 
-st.markdown("""
+st.markdown(
+    """
 <div class="hero">
 
 <h1>🛡️ CryptoShield</h1>
@@ -564,13 +596,16 @@ st.markdown("""
 Blockchain Fraud Intelligence & Investigation System
 </p>
 
-<p class="small-text">
-Convert a victim-reported suspect wallet into an explainable
-blockchain investigation.
+<p>
+Victim-Reported Wallet → Blockchain Evidence →
+Behaviour Analysis → Fraud Detection →
+Explainable Investigation
 </p>
 
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
@@ -579,7 +614,10 @@ blockchain investigation.
 
 with st.sidebar:
 
-    st.header("🔎 Investigation")
+    st.header(
+        "🔎 Start Investigation"
+    )
+
 
     reported_wallet = st.text_input(
         "Reported Suspect Wallet",
@@ -587,15 +625,20 @@ with st.sidebar:
         placeholder="0x..."
     )
 
+
     blockchain = st.selectbox(
         "Blockchain",
-        ["Ethereum", "BSC"],
+        [
+            "Ethereum",
+            "BSC"
+        ],
         index=(
             0
             if st.session_state.blockchain == "Ethereum"
             else 1
         )
     )
+
 
     max_hops = st.slider(
         "Maximum Investigation Hops",
@@ -604,52 +647,60 @@ with st.sidebar:
         value=st.session_state.max_hops
     )
 
+
     start_button = st.button(
         "🔎 Start Investigation",
         use_container_width=True,
         type="primary"
     )
 
+
     st.divider()
 
-    st.markdown("""
-### Investigation Workflow
 
-**1.** Victim reports wallet
+    st.markdown(
+        """
+### 🔬 CryptoShield Workflow
 
-**2.** Blockchain data collection
+**1.** Victim reports suspect wallet
 
-**3.** Multi-hop fund tracing
+**2.** Collect blockchain evidence
 
-**4.** Transaction DNA analysis
+**3.** Trace connected wallets
 
-**5.** Behaviour detection
+**4.** Analyse Transaction DNA
 
-**6.** Fraud-linked pattern detection
+**5.** Detect abnormal activity
 
-**7.** Explainable risk scoring
+**6.** Detect fraud-linked behaviour
 
-**8.** VASP intelligence
+**7.** Calculate explainable risk
 
-**9.** Investigation report
+**8.** Check potential VASP association
 
----
+**9.** Generate investigation report
+
 
 ### ⚠️ Important
 
-CryptoShield provides analytical indicators.
+CryptoShield provides analytical
+indicators.
 
-It does **not** declare a wallet or person criminal.
-""")
+It does not independently prove
+criminal activity or identify a
+person as a criminal.
+"""
+    )
 
 
 # ============================================================
-# START INVESTIGATION
+# INVESTIGATION
 # ============================================================
 
 if start_button:
 
     reported_wallet = reported_wallet.strip()
+
 
     if not reported_wallet:
 
@@ -659,7 +710,10 @@ if start_button:
 
         st.stop()
 
-    if not reported_wallet.startswith("0x"):
+
+    if not reported_wallet.startswith(
+        "0x"
+    ):
 
         st.error(
             "Wallet address must start with 0x."
@@ -667,27 +721,38 @@ if start_button:
 
         st.stop()
 
+
     if len(reported_wallet) != 42:
 
         st.error(
-            "Invalid Ethereum/BSC wallet address."
+            "Invalid wallet address. "
+            "Ethereum/BSC addresses normally contain 42 characters."
         )
 
         st.stop()
 
-    # Save current settings
-    st.session_state.reported_wallet = reported_wallet
-    st.session_state.blockchain = blockchain
-    st.session_state.max_hops = max_hops
+
+    st.session_state.reported_wallet = (
+        reported_wallet
+    )
+
+    st.session_state.blockchain = (
+        blockchain
+    )
+
+    st.session_state.max_hops = (
+        max_hops
+    )
+
 
     with st.spinner(
-        "Running CryptoShield investigation..."
+        "🔍 Running CryptoShield investigation..."
     ):
 
         try:
 
             # =================================================
-            # 1. BLOCKCHAIN TRACE
+            # BLOCKCHAIN TRACE
             # =================================================
 
             trace_data = trace_wallet(
@@ -696,13 +761,15 @@ if start_button:
                 max_hop=max_hops
             )
 
+
             transactions = trace_data.get(
                 "transactions",
                 []
             )
 
+
             # =================================================
-            # 2. TRANSACTION DNA
+            # TRANSACTION DNA
             # =================================================
 
             dna = analyze_transaction_dna(
@@ -710,16 +777,18 @@ if start_button:
                 reported_wallet
             )
 
+
             # =================================================
-            # 3. ABNORMAL TRANSACTION DETECTION
+            # ABNORMAL DETECTION
             # =================================================
 
             abnormal = detect_abnormal_transactions(
                 transactions
             )
 
+
             # =================================================
-            # 4. GENERAL PATTERN DETECTION
+            # GENERAL PATTERNS
             # =================================================
 
             patterns = detect_patterns(
@@ -728,16 +797,18 @@ if start_button:
                 dna
             )
 
+
             # =================================================
-            # 5. VASP DETECTION
+            # VASP
             # =================================================
 
             vasp = detect_vasp(
                 transactions
             )
 
+
             # =================================================
-            # 6. FRAUD DETECTION ENGINE
+            # FRAUD DETECTION
             # =================================================
 
             fraud = detect_fraud_patterns(
@@ -747,8 +818,9 @@ if start_button:
                 abnormal
             )
 
+
             # =================================================
-            # 7. RISK ENGINE
+            # RISK ENGINE
             # =================================================
 
             risk = calculate_risk_v3(
@@ -806,22 +878,48 @@ if start_button:
                 )
             )
 
+
             # =================================================
             # SAVE RESULTS
             # =================================================
 
-            st.session_state.trace_data = trace_data
-            st.session_state.dna = dna
-            st.session_state.patterns = patterns
-            st.session_state.abnormal = abnormal
-            st.session_state.vasp = vasp
-            st.session_state.risk = risk
-            st.session_state.fraud = fraud
-            st.session_state.investigation_done = True
+            st.session_state.trace_data = (
+                trace_data
+            )
+
+            st.session_state.dna = (
+                dna
+            )
+
+            st.session_state.patterns = (
+                patterns
+            )
+
+            st.session_state.abnormal = (
+                abnormal
+            )
+
+            st.session_state.vasp = (
+                vasp
+            )
+
+            st.session_state.risk = (
+                risk
+            )
+
+            st.session_state.fraud = (
+                fraud
+            )
+
+            st.session_state.investigation_done = (
+                True
+            )
+
 
             st.success(
                 "✅ Investigation completed successfully."
             )
+
 
         except Exception as e:
 
@@ -833,18 +931,25 @@ if start_button:
 
 
 # ============================================================
-# RESULTS
+# DISPLAY RESULTS
 # ============================================================
 
 if st.session_state.investigation_done:
 
     trace_data = st.session_state.trace_data
+
     dna = st.session_state.dna
+
     patterns = st.session_state.patterns
+
     abnormal = st.session_state.abnormal
+
     vasp = st.session_state.vasp
+
     risk = st.session_state.risk
+
     fraud = st.session_state.fraud
+
 
     start_wallet = trace_data.get(
         "start_wallet",
@@ -856,8 +961,21 @@ if st.session_state.investigation_done:
         st.session_state.blockchain
     )
 
+
+    # ========================================================
+    # RISK VALUES
+    # ========================================================
+
     risk_score = risk[0]
+
     risk_level = risk[1]
+
+    factors = (
+        risk[2]
+        if len(risk) > 2
+        else {}
+    )
+
 
     fraud_score = fraud.get(
         "fraud_score",
@@ -884,14 +1002,19 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     c1, c2, c3, c4 = st.columns(4)
+
 
     with c1:
 
         st.metric(
             "Reported Wallet",
-            short_address(start_wallet)
+            short_address(
+                start_wallet
+            )
         )
+
 
     with c2:
 
@@ -900,12 +1023,14 @@ if st.session_state.investigation_done:
             selected_chain
         )
 
+
     with c3:
 
         st.metric(
             "Transactions",
             f"{dna.get('transaction_count', 0):,}"
         )
+
 
     with c4:
 
@@ -919,73 +1044,37 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # RISK ASSESSMENT
+    # BLOCKCHAIN RISK
     # ========================================================
 
     st.markdown(
-        '<h2 class="section-title">🚨 Blockchain Risk Assessment</h2>',
+        '<h2 class="section-title">🛡️ Blockchain Risk Assessment</h2>',
         unsafe_allow_html=True
     )
 
+
     if risk_level == "HIGH":
 
-        st.markdown(
-            f"""
-            <div class="risk-high">
-
-            <h2>🔴 HIGH RISK</h2>
-
-            <h1>{risk_score}/100</h1>
-
-            <p>
-            Multiple blockchain behaviour indicators suggest
-            elevated analytical risk.
-            </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.error(
+            f"🔴 HIGH RISK — {risk_score}/100"
         )
 
     elif risk_level == "MEDIUM":
 
-        st.markdown(
-            f"""
-            <div class="risk-medium">
-
-            <h2>🟠 MEDIUM RISK</h2>
-
-            <h1>{risk_score}/100</h1>
-
-            <p>
-            Several blockchain indicators require
-            additional investigation.
-            </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.warning(
+            f"🟠 MEDIUM RISK — {risk_score}/100"
         )
 
     else:
 
-        st.markdown(
-            f"""
-            <div class="risk-low">
-
-            <h2>🟢 LOW RISK</h2>
-
-            <h1>{risk_score}/100</h1>
-
-            <p>
-            Limited risk indicators were observed
-            within the analysed dataset.
-            </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.success(
+            f"🟢 LOW RISK — {risk_score}/100"
         )
+
+
+    st.caption(
+        "The blockchain risk score represents configured analytical indicators."
+    )
 
 
     # ========================================================
@@ -996,6 +1085,7 @@ if st.session_state.investigation_done:
         '<h2 class="section-title">🚨 Fraud Detection Engine</h2>',
         unsafe_allow_html=True
     )
+
 
     if fraud_level == "HIGH":
 
@@ -1018,20 +1108,22 @@ if st.session_state.investigation_done:
             f"Behaviour Score: {fraud_score}/100"
         )
 
+
     st.caption(
-        "This score represents explainable blockchain behaviour indicators, "
+        "This is an explainable behavioural assessment, "
         "not a legal determination of fraud."
     )
 
 
     # ========================================================
-    # DETECTED FRAUD PATTERNS
+    # FRAUD PATTERNS
     # ========================================================
 
     st.markdown(
-        '<h3>🔍 Detected Fraud-Linked Behaviour</h3>',
+        "<h3>🔍 Detected Fraud-Linked Behaviour</h3>",
         unsafe_allow_html=True
     )
+
 
     if fraud_patterns:
 
@@ -1062,11 +1154,13 @@ if st.session_state.investigation_done:
                 0
             )
 
+
             with st.expander(
                 f"🔎 {pattern_type} — {confidence} confidence"
             ):
 
                 a, b, c = st.columns(3)
+
 
                 with a:
 
@@ -1075,12 +1169,14 @@ if st.session_state.investigation_done:
                         score
                     )
 
+
                 with b:
 
                     st.metric(
                         "Confidence",
                         confidence
                     )
+
 
                 with c:
 
@@ -1089,9 +1185,11 @@ if st.session_state.investigation_done:
                         category
                     )
 
+
                 st.write(
                     f"**Evidence:** {evidence}"
                 )
+
 
     else:
 
@@ -1101,13 +1199,14 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # WHY FLAGGED?
+    # WHY FLAGGED
     # ========================================================
 
     st.markdown(
-        '<h3>🧠 Why Did CryptoShield Flag This Wallet?</h3>',
+        "<h3>🧠 Why Did CryptoShield Flag This Wallet?</h3>",
         unsafe_allow_html=True
     )
+
 
     if fraud_patterns:
 
@@ -1134,34 +1233,40 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     native_asset = native_symbol(
         selected_chain
     )
 
-    m1, m2, m3, m4 = st.columns(4)
 
-    with m1:
+    c1, c2, c3, c4 = st.columns(4)
+
+
+    with c1:
 
         st.metric(
             "Native Transactions",
             f"{dna.get('native_transaction_count', 0):,}"
         )
 
-    with m2:
+
+    with c2:
 
         st.metric(
             "Token Transfers",
             f"{dna.get('token_transaction_count', 0):,}"
         )
 
-    with m3:
+
+    with c3:
 
         st.metric(
             "Token Types",
             f"{len(trace_data.get('token_types', [])):,}"
         )
 
-    with m4:
+
+    with c4:
 
         st.metric(
             "Connected Wallets",
@@ -1169,30 +1274,34 @@ if st.session_state.investigation_done:
         )
 
 
-    m5, m6, m7, m8 = st.columns(4)
+    c1, c2, c3, c4 = st.columns(4)
 
-    with m5:
+
+    with c1:
 
         st.metric(
             "Unique Senders",
             f"{dna.get('unique_senders', 0):,}"
         )
 
-    with m6:
+
+    with c2:
 
         st.metric(
             "Unique Receivers",
             f"{dna.get('unique_receivers', 0):,}"
         )
 
-    with m7:
+
+    with c3:
 
         st.metric(
             "Fan-In",
             f"{dna.get('fan_in', 0):,}"
         )
 
-    with m8:
+
+    with c4:
 
         st.metric(
             "Fan-Out",
@@ -1201,43 +1310,32 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # NATIVE ASSET VOLUME
+    # NATIVE VOLUME
     # ========================================================
 
     st.markdown(
-        '<h3>Native Asset Analysis</h3>',
+        "<h3>💰 Native Asset Analysis</h3>",
         unsafe_allow_html=True
     )
 
-    native_volume = dna.get(
-        "native_volume",
-        0
-    )
-
-    avg_native_transfer = dna.get(
-        "average_native_transfer",
-        0
-    )
 
     v1, v2 = st.columns(2)
+
 
     with v1:
 
         st.metric(
-            f"Observed Native Volume ({native_asset})",
-            f"{native_volume:.6f}"
+            f"Observed {native_asset} Volume",
+            f"{dna.get('native_volume', 0):.6f}"
         )
+
 
     with v2:
 
         st.metric(
-            f"Average Native Transfer ({native_asset})",
-            f"{avg_native_transfer:.6f}"
+            f"Average {native_asset} Transfer",
+            f"{dna.get('average_native_transfer', 0):.6f}"
         )
-
-    st.caption(
-        "Native-asset volume is calculated separately from token transfer amounts."
-    )
 
 
     # ========================================================
@@ -1249,10 +1347,12 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     wallet_hops = trace_data.get(
         "wallet_hops",
         {}
     )
+
 
     if wallet_hops:
 
@@ -1261,24 +1361,27 @@ if st.session_state.investigation_done:
             key=lambda x: x[1]
         )
 
+
         for wallet, hop in sorted_wallets:
 
             if wallet.lower() == start_wallet.lower():
 
                 st.success(
-                    f"🚩 Reported Wallet → {short_address(wallet)}"
+                    f"🚩 Reported Wallet → "
+                    f"{short_address(wallet)}"
                 )
 
             else:
 
                 st.info(
-                    f"Hop {hop} → {short_address(wallet)}"
+                    f"Hop {hop} → "
+                    f"{short_address(wallet)}"
                 )
 
     else:
 
         st.info(
-            "No multi-hop wallet path was generated."
+            "No multi-hop wallet path generated."
         )
 
 
@@ -1291,19 +1394,21 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     render_network_graph(
         trace_data
     )
 
 
     # ========================================================
-    # INVESTIGATION FINDINGS
+    # FINDINGS
     # ========================================================
 
     st.markdown(
         '<h2 class="section-title">🔍 Investigation Findings</h2>',
         unsafe_allow_html=True
     )
+
 
     findings = create_investigation_findings(
         trace_data,
@@ -1313,6 +1418,7 @@ if st.session_state.investigation_done:
         fraud
     )
 
+
     for finding in findings:
 
         st.write(
@@ -1321,7 +1427,7 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # EXPLAINABLE RISK
+    # EXPLAINABLE RISK SCORE
     # ========================================================
 
     st.markdown(
@@ -1329,28 +1435,40 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
-    factors = {}
 
-    if len(risk) >= 3:
+    # IMPORTANT:
+    # factors is expected to be a DICTIONARY.
+    # This fixes your previous .items() error.
 
-        factors = risk[2]
-
-    if factors:
+    if isinstance(
+        factors,
+        dict
+    ) and factors:
 
         factor_rows = []
+
 
         for factor, value in factors.items():
 
             factor_rows.append({
-                "Risk Factor": factor,
-                "Contribution": value
+
+                "Risk Factor":
+                    factor,
+
+                "Contribution":
+                    value
+
             })
 
+
         st.dataframe(
-            pd.DataFrame(factor_rows),
+            pd.DataFrame(
+                factor_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
+
 
     else:
 
@@ -1360,7 +1478,7 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # GENERAL SUSPICIOUS PATTERNS
+    # GENERAL BLOCKCHAIN PATTERNS
     # ========================================================
 
     st.markdown(
@@ -1368,32 +1486,45 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     if patterns:
 
         pattern_rows = []
 
+
         for item in patterns:
 
             pattern_rows.append({
-                "Pattern": item.get(
-                    "pattern",
-                    "Unknown"
-                ),
-                "Severity": item.get(
-                    "severity",
-                    "Unknown"
-                ),
-                "Description": item.get(
-                    "description",
-                    ""
-                )
+
+                "Pattern":
+                    item.get(
+                        "pattern",
+                        "Unknown"
+                    ),
+
+                "Severity":
+                    item.get(
+                        "severity",
+                        "Unknown"
+                    ),
+
+                "Description":
+                    item.get(
+                        "description",
+                        ""
+                    )
+
             })
 
+
         st.dataframe(
-            pd.DataFrame(pattern_rows),
+            pd.DataFrame(
+                pattern_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
+
 
     else:
 
@@ -1411,48 +1542,63 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     if abnormal:
 
         abnormal_rows = []
 
+
         for item in abnormal[:100]:
 
             abnormal_rows.append({
-                "Transaction Hash": item.get(
-                    "hash",
-                    "Unknown"
-                ),
-                "Score": item.get(
-                    "score",
-                    0
-                ),
-                "Reason": item.get(
-                    "reason",
-                    ""
-                )
+
+                "Transaction Hash":
+                    item.get(
+                        "hash",
+                        "Unknown"
+                    ),
+
+                "Score":
+                    item.get(
+                        "score",
+                        0
+                    ),
+
+                "Reason":
+                    item.get(
+                        "reason",
+                        ""
+                    )
+
             })
 
+
         st.dataframe(
-            pd.DataFrame(abnormal_rows),
+            pd.DataFrame(
+                abnormal_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
 
+
         if len(abnormal) > 100:
 
             st.caption(
-                f"Showing top 100 abnormal transactions out of {len(abnormal)}."
+                f"Showing top 100 abnormal transactions "
+                f"out of {len(abnormal)}."
             )
+
 
     else:
 
         st.success(
-            "No abnormal transactions detected by the current rules."
+            "No abnormal transactions detected."
         )
 
 
     # ========================================================
-    # VASP INTELLIGENCE
+    # VASP
     # ========================================================
 
     st.markdown(
@@ -1460,9 +1606,11 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     if vasp:
 
         vasp_rows = []
+
 
         for item in vasp:
 
@@ -1492,7 +1640,7 @@ if st.session_state.investigation_done:
                         "Unknown"
                     ),
 
-                "Role":
+                "Transaction Role":
                     item.get(
                         "transaction_role",
                         "Unknown"
@@ -1509,23 +1657,29 @@ if st.session_state.investigation_done:
                         "source",
                         "Unknown"
                     )
+
             })
 
+
         st.dataframe(
-            pd.DataFrame(vasp_rows),
+            pd.DataFrame(
+                vasp_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
 
+
         st.warning(
-            "A VASP match indicates only a potential association based on "
-            "the configured registry. It does not prove ownership or criminal activity."
+            "VASP matching indicates a potential association only. "
+            "It does not prove wallet ownership or criminal activity."
         )
+
 
     else:
 
         st.info(
-            "No matching VASP label was found in the currently configured registry."
+            "No VASP association was found in the configured registry."
         )
 
 
@@ -1538,68 +1692,80 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
-    dna_data = {
 
-        "Metric": [
+    dna_rows = [
 
-            "Transaction Count",
-            "Native Transactions",
-            "Token Transactions",
-            "Unique Senders",
-            "Unique Receivers",
-            "Fan-In",
-            "Fan-Out",
-            "Rapid Movements"
-
-        ],
-
-        "Value": [
-
-            dna.get(
+        {
+            "Metric": "Transaction Count",
+            "Value": dna.get(
                 "transaction_count",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Native Transactions",
+            "Value": dna.get(
                 "native_transaction_count",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Token Transactions",
+            "Value": dna.get(
                 "token_transaction_count",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Unique Senders",
+            "Value": dna.get(
                 "unique_senders",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Unique Receivers",
+            "Value": dna.get(
                 "unique_receivers",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Fan-In",
+            "Value": dna.get(
                 "fan_in",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Fan-Out",
+            "Value": dna.get(
                 "fan_out",
                 0
-            ),
+            )
+        },
 
-            dna.get(
+        {
+            "Metric": "Rapid Movements",
+            "Value": dna.get(
                 "rapid_movements",
                 0
             )
+        }
 
-        ]
-    }
+    ]
+
 
     st.dataframe(
-        pd.DataFrame(dna_data),
+        pd.DataFrame(
+            dna_rows
+        ),
         use_container_width=True,
         hide_index=True
     )
@@ -1610,33 +1776,45 @@ if st.session_state.investigation_done:
     # ========================================================
 
     st.markdown(
-        '<h3>⏰ Activity by Hour</h3>',
+        "<h3>⏰ Activity by Hour</h3>",
         unsafe_allow_html=True
     )
+
 
     active_hours = dna.get(
         "active_hours",
         {}
     )
 
+
     if active_hours:
 
         hour_rows = []
+
 
         for hour, count in sorted(
             active_hours.items()
         ):
 
             hour_rows.append({
-                "Hour": hour,
-                "Transactions": count
+
+                "Hour":
+                    hour,
+
+                "Transactions":
+                    count
+
             })
 
+
         st.dataframe(
-            pd.DataFrame(hour_rows),
+            pd.DataFrame(
+                hour_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
+
 
     else:
 
@@ -1654,14 +1832,17 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     token_transactions = trace_data.get(
         "token_transactions",
         []
     )
 
+
     if token_transactions:
 
         token_rows = []
+
 
         for tx in token_transactions[:100]:
 
@@ -1704,7 +1885,7 @@ if st.session_state.investigation_done:
                         "0"
                     ),
 
-                "Hash":
+                "Transaction Hash":
                     tx.get(
                         "hash",
                         "Unknown"
@@ -1712,18 +1893,15 @@ if st.session_state.investigation_done:
 
             })
 
+
         st.dataframe(
-            pd.DataFrame(token_rows),
+            pd.DataFrame(
+                token_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
 
-        if len(token_transactions) > 100:
-
-            st.caption(
-                f"Showing first 100 token transfers out of "
-                f"{len(token_transactions)}."
-            )
 
     else:
 
@@ -1741,14 +1919,17 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     all_transactions = trace_data.get(
         "transactions",
         []
     )
 
+
     if all_transactions:
 
         evidence_rows = []
+
 
         for tx in all_transactions[:100]:
 
@@ -1796,18 +1977,23 @@ if st.session_state.investigation_done:
 
             })
 
+
         st.dataframe(
-            pd.DataFrame(evidence_rows),
+            pd.DataFrame(
+                evidence_rows
+            ),
             use_container_width=True,
             hide_index=True
         )
 
+
         if len(all_transactions) > 100:
 
             st.caption(
-                f"Showing first 100 transactions out of "
-                f"{len(all_transactions)}."
+                f"Showing first 100 transactions "
+                f"out of {len(all_transactions)}."
             )
+
 
     else:
 
@@ -1817,7 +2003,7 @@ if st.session_state.investigation_done:
 
 
     # ========================================================
-    # INVESTIGATION CONCLUSION
+    # CONCLUSION
     # ========================================================
 
     st.markdown(
@@ -1825,48 +2011,56 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     st.markdown(
         f"""
-        <div class="info-card">
+<div class="info-card">
 
-        <h3>CryptoShield Analytical Conclusion</h3>
+<h3>CryptoShield Analytical Conclusion</h3>
 
-        <p>
-        The reported wallet was analysed on the
-        <b>{selected_chain}</b> blockchain.
-        The investigation observed
-        <b>{dna.get("transaction_count", 0):,}</b>
-        transactions and explored up to
-        <b>{trace_data.get("max_hop", 0)}</b>
-        wallet hops.
-        </p>
+<p>
+The reported wallet was analysed on the
+<b>{selected_chain}</b> blockchain.
+</p>
 
-        <p>
-        Blockchain analytical risk score:
-        <b>{risk_score}/100 ({risk_level})</b>
-        </p>
+<p>
+<b>Transactions analysed:</b>
+{dna.get("transaction_count", 0):,}
+</p>
 
-        <p>
-        Fraud-linked behaviour score:
-        <b>{fraud_score}/100 ({fraud_level})</b>
-        </p>
+<p>
+<b>Maximum wallet hop:</b>
+{trace_data.get("max_hop", 0)}
+</p>
 
-        <p>
-        The system identified
-        <b>{len(fraud_patterns)}</b>
-        behavioural indicators and
-        <b>{len(abnormal)}</b>
-        abnormal transaction alerts.
-        </p>
+<p>
+<b>Blockchain Risk Score:</b>
+{risk_score}/100 ({risk_level})
+</p>
 
-        <p>
-        These results are investigative indicators and
-        should be combined with additional evidence before
-        making enforcement or attribution decisions.
-        </p>
+<p>
+<b>Fraud-Linked Behaviour Score:</b>
+{fraud_score}/100 ({fraud_level})
+</p>
 
-        </div>
-        """,
+<p>
+<b>Fraud-linked behavioural indicators:</b>
+{len(fraud_patterns)}
+</p>
+
+<p>
+<b>Abnormal transaction alerts:</b>
+{len(abnormal)}
+</p>
+
+<p>
+These results are investigative indicators and should be
+combined with additional evidence before making enforcement
+or attribution decisions.
+</p>
+
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -1880,9 +2074,11 @@ if st.session_state.investigation_done:
         unsafe_allow_html=True
     )
 
+
     st.write(
-        "Generate an investigation-ready PDF containing the analysed evidence."
+        "Generate an investigation-ready PDF report."
     )
+
 
     if st.button(
         "📄 Generate PDF Report",
@@ -1890,20 +2086,6 @@ if st.session_state.investigation_done:
     ):
 
         try:
-
-            # IMPORTANT:
-            # Current report_generator.py signature:
-            #
-            # generate_pdf_report(
-            #     start_wallet,
-            #     selected_chain,
-            #     trace_data,
-            #     dna,
-            #     risk_score,
-            #     risk_level,
-            #     patterns,
-            #     abnormal
-            # )
 
             pdf_path = generate_pdf_report(
 
@@ -1925,12 +2107,14 @@ if st.session_state.investigation_done:
 
             )
 
+
             with open(
                 pdf_path,
                 "rb"
             ) as pdf_file:
 
                 pdf_data = pdf_file.read()
+
 
             st.download_button(
 
@@ -1939,14 +2123,16 @@ if st.session_state.investigation_done:
                 data=pdf_data,
 
                 file_name=(
-                    f"CryptoShield_Report_"
-                    f"{start_wallet[:10]}.pdf"
+                    "CryptoShield_"
+                    "Investigation_Report.pdf"
                 ),
 
                 mime="application/pdf",
 
                 use_container_width=True
+
             )
+
 
         except Exception as e:
 
@@ -1961,7 +2147,9 @@ if st.session_state.investigation_done:
 
     st.divider()
 
-    st.warning("""
+
+    st.warning(
+        """
 ### ⚠️ Investigation Disclaimer
 
 CryptoShield is a blockchain analytics and investigation
@@ -1974,9 +2162,10 @@ are analytical indicators.
 They do not independently establish criminal activity,
 wallet ownership, or legal responsibility.
 
-Final conclusions must be verified using additional
+Final conclusions should be verified using additional
 investigative evidence and appropriate legal procedures.
-""")
+"""
+    )
 
 
 # ============================================================
@@ -1987,50 +2176,58 @@ else:
 
     st.markdown(
         """
-        <div class="info-card">
+<div class="info-card">
 
-        <h2>👋 Welcome to CryptoShield</h2>
+<h2>👋 Welcome to CryptoShield</h2>
 
-        <p>
-        Enter a victim-reported suspect wallet address from
-        the sidebar to begin the investigation.
-        </p>
+<p>
+Enter a victim-reported suspect wallet address
+from the sidebar to begin the investigation.
+</p>
 
-        <h3>🔍 What CryptoShield does</h3>
+<h3>🔍 What CryptoShield Does</h3>
 
-        <ul>
+<ul>
 
-        <li>Collects blockchain transaction data</li>
+<li>Collects blockchain transaction data</li>
 
-        <li>Traces connected wallets across multiple hops</li>
+<li>Traces connected wallets</li>
 
-        <li>Builds transaction behaviour DNA</li>
+<li>Performs multi-hop investigation</li>
 
-        <li>Detects abnormal transaction activity</li>
+<li>Builds Transaction DNA</li>
 
-        <li>Identifies fraud-linked behaviour patterns</li>
+<li>Detects abnormal transaction activity</li>
 
-        <li>Calculates an explainable blockchain risk score</li>
+<li>Detects fraud-linked behaviour patterns</li>
 
-        <li>Calculates a fraud-linked behaviour score</li>
+<li>Calculates an explainable blockchain risk score</li>
 
-        <li>Checks potential VASP/exchange associations</li>
+<li>Calculates a fraud-linked behaviour score</li>
 
-        <li>Visualizes the wallet network</li>
+<li>Checks potential VASP/exchange associations</li>
 
-        <li>Generates an investigation report</li>
+<li>Builds a wallet network graph</li>
 
-        </ul>
+<li>Generates an investigation report</li>
 
-        <h3>🎯 Core Idea</h3>
+</ul>
 
-        <p>
-        <b>Victim-Reported Wallet → Blockchain Evidence →
-        Behaviour Analysis → Fraud-Linked Pattern Detection →
-        Explainable Risk Assessment → Investigation Report</b>
-        </p>
+<h3>🎯 Core Innovation</h3>
 
-        </div>
-        """,
+<p>
+<b>
+Victim-Reported Wallet →
+Blockchain Evidence →
+Multi-Hop Tracing →
+Behaviour Analysis →
+Fraud-Linked Detection →
+Explainable Risk →
+Investigation Report
+</b>
+</p>
+
+</div>
+""",
         unsafe_allow_html=True
     )
