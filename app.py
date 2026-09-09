@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from pathlib import Path
-from fund_flow_graph import render_fund_flow_graph
+
 # ============================================================
 # CRYPTO SHIELD
 # Blockchain Fraud Intelligence System
@@ -99,22 +98,6 @@ st.markdown(
         margin-top: 0;
     }
 
-    .section-title {
-        font-size: 25px;
-        font-weight: 700;
-    }
-
-    .risk-box {
-        padding: 18px;
-        border-radius: 12px;
-        margin-bottom: 10px;
-    }
-
-    .small-text {
-        color: #9CA3AF;
-        font-size: 13px;
-    }
-
     </style>
     """,
     unsafe_allow_html=True
@@ -140,6 +123,7 @@ if "case_id" not in st.session_state:
 # ============================================================
 
 if init_database:
+
     try:
         init_database()
     except Exception:
@@ -151,6 +135,7 @@ if init_database:
 # ============================================================
 
 def normalize_address(address):
+
     if not address:
         return ""
 
@@ -158,6 +143,7 @@ def normalize_address(address):
 
 
 def short_address(address):
+
     if not address:
         return "Unknown"
 
@@ -169,6 +155,10 @@ def short_address(address):
     return address[:8] + "..." + address[-6:]
 
 
+# ============================================================
+# RISK SCORE
+# ============================================================
+
 def calculate_risk_score(
     transaction_count,
     fan_in,
@@ -178,16 +168,12 @@ def calculate_risk_score(
     exchange_count,
     cross_case_count
 ):
-    """
-    Explainable rule-based risk score.
-
-    This is an analytical indicator, NOT a criminal verdict.
-    """
 
     score = 0
 
     if transaction_count >= 100:
         score += 15
+
     elif transaction_count >= 50:
         score += 8
 
@@ -202,6 +188,7 @@ def calculate_risk_score(
 
     if abnormal_count >= 5:
         score += 15
+
     elif abnormal_count > 0:
         score += 8
 
@@ -215,15 +202,22 @@ def calculate_risk_score(
 
     if score >= 70:
         level = "HIGH"
+
     elif score >= 40:
         level = "MEDIUM"
+
     else:
         level = "LOW"
 
     return score, level
 
 
+# ============================================================
+# EXTRACT HOPS
+# ============================================================
+
 def extract_hop_wallets(wallet_hops):
+
     result = {}
 
     if not wallet_hops:
@@ -243,11 +237,11 @@ def extract_hop_wallets(wallet_hops):
     return result
 
 
+# ============================================================
+# EXTRACT TRACE RESULT
+# ============================================================
+
 def extract_tracing_result(result):
-    """
-    Make the application tolerant of different trace_wallet
-    return structures.
-    """
 
     transactions = []
     wallet_hops = {}
@@ -256,6 +250,7 @@ def extract_tracing_result(result):
     important_wallets = []
 
     if not result:
+
         return (
             transactions,
             wallet_hops,
@@ -265,24 +260,33 @@ def extract_tracing_result(result):
         )
 
     # --------------------------------------------------------
-    # Dictionary result
+    # DICTIONARY RESULT
     # --------------------------------------------------------
 
     if isinstance(result, dict):
 
         transactions = result.get(
             "transactions",
-            result.get("all_transactions", [])
+            result.get(
+                "all_transactions",
+                []
+            )
         )
 
         wallet_hops = result.get(
             "wallet_hops",
-            result.get("hops", {})
+            result.get(
+                "hops",
+                {}
+            )
         )
 
         connections = result.get(
             "connections",
-            result.get("fund_flow_connections", [])
+            result.get(
+                "fund_flow_connections",
+                []
+            )
         )
 
         final_destinations = result.get(
@@ -296,7 +300,7 @@ def extract_tracing_result(result):
         )
 
     # --------------------------------------------------------
-    # Tuple/list result
+    # LIST / TUPLE RESULT
     # --------------------------------------------------------
 
     elif isinstance(result, (tuple, list)):
@@ -316,20 +320,37 @@ def extract_tracing_result(result):
         if len(result) >= 5:
             important_wallets = result[4]
 
+    # --------------------------------------------------------
+    # NORMALIZE TYPES
+    # --------------------------------------------------------
+
     if not isinstance(transactions, list):
-        transactions = list(transactions or [])
+
+        transactions = list(
+            transactions or []
+        )
 
     if not isinstance(wallet_hops, dict):
+
         wallet_hops = {}
 
     if not isinstance(connections, list):
-        connections = list(connections or [])
+
+        connections = list(
+            connections or []
+        )
 
     if not isinstance(final_destinations, list):
-        final_destinations = list(final_destinations or [])
+
+        final_destinations = list(
+            final_destinations or []
+        )
 
     if not isinstance(important_wallets, list):
-        important_wallets = list(important_wallets or [])
+
+        important_wallets = list(
+            important_wallets or []
+        )
 
     return (
         transactions,
@@ -340,17 +361,14 @@ def extract_tracing_result(result):
     )
 
 
+# ============================================================
+# BUILD CONNECTIONS
+# ============================================================
+
 def build_connections_from_transactions(
     transactions,
     wallet_hops
 ):
-    """
-    Build ACTUAL transaction-direction connections.
-
-    from -> to
-
-    Hop numbers are NOT used to invent direction.
-    """
 
     connections = []
     seen = set()
@@ -358,11 +376,17 @@ def build_connections_from_transactions(
     for tx in transactions:
 
         sender = normalize_address(
-            tx.get("from", "")
+            tx.get(
+                "from",
+                ""
+            )
         )
 
         receiver = normalize_address(
-            tx.get("to", "")
+            tx.get(
+                "to",
+                ""
+            )
         )
 
         if not sender or not receiver:
@@ -385,13 +409,21 @@ def build_connections_from_transactions(
             {
                 "from": sender,
                 "to": receiver,
-                "from_hop": wallet_hops.get(sender),
-                "to_hop": wallet_hops.get(receiver)
+                "from_hop": wallet_hops.get(
+                    sender
+                ),
+                "to_hop": wallet_hops.get(
+                    receiver
+                )
             }
         )
 
     return connections
 
+
+# ============================================================
+# REPORT DATA
+# ============================================================
 
 def generate_report_data(
     wallet_address,
@@ -407,23 +439,52 @@ def generate_report_data(
     risk_score,
     risk_level
 ):
+
     return {
-        "case_id": st.session_state.case_id,
-        "wallet_address": wallet_address,
-        "chain": chain,
-        "generated_at": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-        "transaction_count": len(transactions),
-        "wallet_count": len(wallet_hops),
-        "connection_count": len(connections),
-        "transaction_dna": dna,
-        "abnormal_transactions": abnormal,
-        "vasp_matches": vasp_matches,
-        "exchange_matches": exchange_matches,
-        "cross_case_alerts": cross_case_alerts,
-        "risk_score": risk_score,
-        "risk_level": risk_level
+
+        "case_id":
+            st.session_state.case_id,
+
+        "wallet_address":
+            wallet_address,
+
+        "chain":
+            chain,
+
+        "generated_at":
+            datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "transaction_count":
+            len(transactions),
+
+        "wallet_count":
+            len(wallet_hops),
+
+        "connection_count":
+            len(connections),
+
+        "transaction_dna":
+            dna,
+
+        "abnormal_transactions":
+            abnormal,
+
+        "vasp_matches":
+            vasp_matches,
+
+        "exchange_matches":
+            exchange_matches,
+
+        "cross_case_alerts":
+            cross_case_alerts,
+
+        "risk_score":
+            risk_score,
+
+        "risk_level":
+            risk_level
     }
 
 
@@ -443,7 +504,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown("### 🔍 Investigation")
+    st.markdown(
+        "### 🔍 Investigation"
+    )
 
     wallet_address = st.text_input(
         "Reported Suspect Wallet",
@@ -557,7 +620,7 @@ if analyze_button:
         st.stop()
 
     # --------------------------------------------------------
-    # Start analysis
+    # START ANALYSIS
     # --------------------------------------------------------
 
     with st.spinner(
@@ -574,6 +637,7 @@ if analyze_button:
         except TypeError:
 
             try:
+
                 result = trace_wallet(
                     wallet_address,
                     max_hops=max_hop
@@ -582,6 +646,7 @@ if analyze_button:
             except TypeError:
 
                 try:
+
                     result = trace_wallet(
                         wallet_address
                     )
@@ -610,20 +675,26 @@ if analyze_button:
 
             st.stop()
 
+    # --------------------------------------------------------
+    # EXTRACT RESULT
+    # --------------------------------------------------------
+
     (
         transactions,
         wallet_hops,
         connections,
         final_destinations,
         important_wallets
-    ) = extract_tracing_result(result)
+    ) = extract_tracing_result(
+        result
+    )
 
     wallet_hops = extract_hop_wallets(
         wallet_hops
     )
 
     # --------------------------------------------------------
-    # Build actual transaction connections
+    # BUILD ACTUAL CONNECTIONS
     # --------------------------------------------------------
 
     if not connections:
@@ -634,7 +705,7 @@ if analyze_button:
         )
 
     # --------------------------------------------------------
-    # Transaction DNA
+    # TRANSACTION DNA
     # --------------------------------------------------------
 
     dna = {}
@@ -655,7 +726,7 @@ if analyze_button:
             }
 
     # --------------------------------------------------------
-    # Abnormal transactions
+    # ABNORMAL ACTIVITY
     # --------------------------------------------------------
 
     abnormal = []
@@ -669,10 +740,11 @@ if analyze_button:
             )
 
         except Exception:
+
             abnormal = []
 
     # --------------------------------------------------------
-    # VASP analysis
+    # VASP
     # --------------------------------------------------------
 
     vasp_matches = []
@@ -686,10 +758,11 @@ if analyze_button:
             )
 
         except Exception:
+
             vasp_matches = []
 
     # --------------------------------------------------------
-    # Exchange intelligence
+    # EXCHANGE INTELLIGENCE
     # --------------------------------------------------------
 
     exchange_matches = []
@@ -717,10 +790,11 @@ if analyze_button:
                 )
 
         except Exception:
+
             exchange_matches = []
 
     # --------------------------------------------------------
-    # Cross-case intelligence
+    # CROSS CASE INTELLIGENCE
     # --------------------------------------------------------
 
     cross_case_alerts = []
@@ -730,16 +804,29 @@ if analyze_button:
     if get_all_cases:
 
         try:
+
             previous_cases = get_all_cases()
+
         except Exception:
+
             previous_cases = []
 
     temporary_case = {
-        "case_id": "CURRENT",
-        "wallet_address": wallet_address,
-        "chain": chain,
-        "final_destinations": final_destinations,
-        "important_wallets": important_wallets
+
+        "case_id":
+            "CURRENT",
+
+        "wallet_address":
+            wallet_address,
+
+        "chain":
+            chain,
+
+        "final_destinations":
+            final_destinations,
+
+        "important_wallets":
+            important_wallets
     }
 
     if detect_cross_case_convergence:
@@ -758,64 +845,113 @@ if analyze_button:
             cross_case_alerts = []
 
     # --------------------------------------------------------
-    # Risk score
+    # RISK
     # --------------------------------------------------------
 
     transaction_count = len(
         transactions
     )
 
-    fan_in = dna.get(
-        "fan_in",
-        0
-    ) if isinstance(dna, dict) else 0
+    fan_in = (
+        dna.get(
+            "fan_in",
+            0
+        )
+        if isinstance(dna, dict)
+        else 0
+    )
 
-    fan_out = dna.get(
-        "fan_out",
-        0
-    ) if isinstance(dna, dict) else 0
+    fan_out = (
+        dna.get(
+            "fan_out",
+            0
+        )
+        if isinstance(dna, dict)
+        else 0
+    )
 
-    rapid_movements = dna.get(
-        "rapid_movements",
-        0
-    ) if isinstance(dna, dict) else 0
+    rapid_movements = (
+        dna.get(
+            "rapid_movements",
+            0
+        )
+        if isinstance(dna, dict)
+        else 0
+    )
 
     risk_score, risk_level = calculate_risk_score(
+
         transaction_count,
+
         fan_in,
+
         fan_out,
+
         rapid_movements,
+
         len(abnormal),
+
         len(exchange_matches),
+
         len(cross_case_alerts)
     )
 
     # --------------------------------------------------------
-    # Store analysis
+    # SAVE ANALYSIS IN SESSION
     # --------------------------------------------------------
 
     st.session_state.analysis_data = {
-        "wallet_address": wallet_address,
-        "chain": chain,
-        "transactions": transactions,
-        "wallet_hops": wallet_hops,
-        "connections": connections,
-        "final_destinations": final_destinations,
-        "important_wallets": important_wallets,
-        "dna": dna,
-        "abnormal": abnormal,
-        "vasp_matches": vasp_matches,
-        "exchange_matches": exchange_matches,
-        "exchange_summary": exchange_summary,
-        "cross_case_alerts": cross_case_alerts,
-        "risk_score": risk_score,
-        "risk_level": risk_level
+
+        "wallet_address":
+            wallet_address,
+
+        "chain":
+            chain,
+
+        "transactions":
+            transactions,
+
+        "wallet_hops":
+            wallet_hops,
+
+        "connections":
+            connections,
+
+        "final_destinations":
+            final_destinations,
+
+        "important_wallets":
+            important_wallets,
+
+        "dna":
+            dna,
+
+        "abnormal":
+            abnormal,
+
+        "vasp_matches":
+            vasp_matches,
+
+        "exchange_matches":
+            exchange_matches,
+
+        "exchange_summary":
+            exchange_summary,
+
+        "cross_case_alerts":
+            cross_case_alerts,
+
+        "risk_score":
+            risk_score,
+
+        "risk_level":
+            risk_level
     }
 
     st.session_state.analysis_complete = True
 
     # --------------------------------------------------------
-    # Save case
+    # SAVE CASE
     # --------------------------------------------------------
 
     if save_case:
@@ -823,8 +959,13 @@ if analyze_button:
         try:
 
             case_id = save_case(
-                wallet_address=wallet_address,
-                chain=chain,
+
+                wallet_address=
+                    wallet_address,
+
+                chain=
+                    chain,
+
                 traced_value=(
                     dna.get(
                         "total_volume",
@@ -833,17 +974,30 @@ if analyze_button:
                     if isinstance(dna, dict)
                     else 0
                 ),
-                risk_score=risk_score,
-                risk_level=risk_level,
-                max_hop=max_hop,
-                final_destinations=final_destinations,
-                important_wallets=important_wallets,
-                hop_paths=connections
+
+                risk_score=
+                    risk_score,
+
+                risk_level=
+                    risk_level,
+
+                max_hop=
+                    max_hop,
+
+                final_destinations=
+                    final_destinations,
+
+                important_wallets=
+                    important_wallets,
+
+                hop_paths=
+                    connections
             )
 
             st.session_state.case_id = case_id
 
         except Exception:
+
             st.session_state.case_id = None
 
     st.success(
@@ -977,7 +1131,7 @@ if st.session_state.analysis_complete:
     )
 
     # ========================================================
-    # TAB 1 - OVERVIEW
+    # TAB 1
     # ========================================================
 
     with tabs[0]:
@@ -1103,98 +1257,130 @@ if st.session_state.analysis_complete:
             "be validated by authorized investigators."
         )
 
- # ========================================================
-# TAB 2 - FUND FLOW GRAPH
-# ========================================================
+    # ========================================================
+    # TAB 2 - FUND FLOW GRAPH
+    # ========================================================
 
-with tabs[1]:
+    with tabs[1]:
 
-    st.subheader(
-        "🕸️ Interconnected Fund Flow Network"
-    )
-
-    st.write(
-        "Actual blockchain transaction direction is shown as "
-        "`from → to`. Hop numbers describe tracing distance."
-    )
-
-    # ----------------------------------------------------
-    # VISUAL GRAPH
-    # ----------------------------------------------------
-
-    if transactions:
-
-        render_fund_flow_graph(
-            transactions=transactions,
-            wallet_hops=wallet_hops,
-            start_wallet=wallet_address,
-            max_nodes=40,
-            max_edges=80
+        st.subheader(
+            "🕸️ Interconnected Fund Flow Network"
         )
 
-    else:
-
-        st.warning(
-            "No blockchain transactions available "
-            "for fund-flow visualization."
+        st.write(
+            "Actual blockchain transaction direction is shown as "
+            "`from → to`. Hop numbers describe tracing distance."
         )
 
-    # ----------------------------------------------------
-    # CONNECTION TABLE
-    # ----------------------------------------------------
+        # ----------------------------------------------------
+        # VISUAL GRAPH
+        # ----------------------------------------------------
 
-    st.divider()
+        if transactions:
 
-    st.markdown(
-        "### 🔄 Fund Flow Connections"
-    )
+            if render_fund_flow_graph:
 
-    if connections:
+                render_fund_flow_graph(
 
-        display_connections = []
+                    transactions=
+                        transactions,
 
-        for connection in connections[:80]:
+                    wallet_hops=
+                        wallet_hops,
 
-            sender = connection.get(
-                "from",
-                ""
+                    start_wallet=
+                        wallet_address,
+
+                    max_nodes=
+                        40,
+
+                    max_edges=
+                        80
+                )
+
+            else:
+
+                st.error(
+                    "fund_flow_graph.py could not be imported."
+                )
+
+        else:
+
+            st.warning(
+                "No blockchain transactions available "
+                "for fund-flow visualization."
             )
 
-            receiver = connection.get(
-                "to",
-                ""
-            )
+        # ----------------------------------------------------
+        # CONNECTION TABLE
+        # ----------------------------------------------------
 
-            display_connections.append(
-                {
-                    "From": short_address(sender),
-                    "To": short_address(receiver),
+        st.divider()
 
-                    "From Hop": connection.get(
-                        "from_hop",
-                        "-"
-                    ),
-
-                    "To Hop": connection.get(
-                        "to_hop",
-                        "-"
-                    )
-                }
-            )
-
-        st.dataframe(
-            pd.DataFrame(
-                display_connections
-            ),
-            use_container_width=True,
-            hide_index=True
+        st.markdown(
+            "### 🔄 Fund Flow Connections"
         )
 
-    else:
+        if connections:
 
-        st.info(
-            "No fund-flow connections found."
-        )
+            display_connections = []
+
+            for connection in connections[:80]:
+
+                sender = connection.get(
+                    "from",
+                    ""
+                )
+
+                receiver = connection.get(
+                    "to",
+                    ""
+                )
+
+                display_connections.append(
+                    {
+
+                        "From":
+                            short_address(
+                                sender
+                            ),
+
+                        "To":
+                            short_address(
+                                receiver
+                            ),
+
+                        "From Hop":
+                            connection.get(
+                                "from_hop",
+                                "-"
+                            ),
+
+                        "To Hop":
+                            connection.get(
+                                "to_hop",
+                                "-"
+                            )
+                    }
+                )
+
+            st.dataframe(
+
+                pd.DataFrame(
+                    display_connections
+                ),
+
+                use_container_width=True,
+
+                hide_index=True
+            )
+
+        else:
+
+            st.info(
+                "No fund-flow connections found."
+            )
+
     # ========================================================
     # TAB 3 - SUSPICIOUS WALLETS
     # ========================================================
@@ -1214,11 +1400,17 @@ with tabs[1]:
             for tx in transactions:
 
                 sender = normalize_address(
-                    tx.get("from", "")
+                    tx.get(
+                        "from",
+                        ""
+                    )
                 )
 
                 receiver = normalize_address(
-                    tx.get("to", "")
+                    tx.get(
+                        "to",
+                        ""
+                    )
                 )
 
                 if wallet in (
@@ -1226,7 +1418,9 @@ with tabs[1]:
                     receiver
                 ):
 
-                    wallet_tx.append(tx)
+                    wallet_tx.append(
+                        tx
+                    )
 
             wallet_score = 0
 
@@ -1246,17 +1440,25 @@ with tabs[1]:
             for tx in wallet_tx:
 
                 sender = normalize_address(
-                    tx.get("from", "")
+                    tx.get(
+                        "from",
+                        ""
+                    )
                 )
 
                 receiver = normalize_address(
-                    tx.get("to", "")
+                    tx.get(
+                        "to",
+                        ""
+                    )
                 )
 
                 if receiver == wallet:
+
                     incoming += 1
 
                 if sender == wallet:
+
                     outgoing += 1
 
             if incoming >= 5:
@@ -1283,12 +1485,19 @@ with tabs[1]:
                     "Multi-hop participant"
                 )
 
-            if wallet in [
+            exchange_addresses = [
+
                 normalize_address(
-                    match.get("address", "")
+                    match.get(
+                        "address",
+                        ""
+                    )
                 )
+
                 for match in exchange_matches
-            ]:
+            ]
+
+            if wallet in exchange_addresses:
 
                 wallet_score += 15
 
@@ -1315,30 +1524,56 @@ with tabs[1]:
 
             wallet_scores.append(
                 {
-                    "Wallet": short_address(wallet),
-                    "Full Address": wallet,
-                    "Hop": hop,
-                    "Transactions": len(wallet_tx),
-                    "Incoming": incoming,
-                    "Outgoing": outgoing,
-                    "Risk Score": wallet_score,
-                    "Risk Level": level,
-                    "Reason": "; ".join(reasons)
+
+                    "Wallet":
+                        short_address(
+                            wallet
+                        ),
+
+                    "Full Address":
+                        wallet,
+
+                    "Hop":
+                        hop,
+
+                    "Transactions":
+                        len(wallet_tx),
+
+                    "Incoming":
+                        incoming,
+
+                    "Outgoing":
+                        outgoing,
+
+                    "Risk Score":
+                        wallet_score,
+
+                    "Risk Level":
+                        level,
+
+                    "Reason":
+                        "; ".join(
+                            reasons
+                        )
                 }
             )
 
         wallet_scores.sort(
-            key=lambda x: x["Risk Score"],
+            key=lambda x:
+                x["Risk Score"],
             reverse=True
         )
 
         if wallet_scores:
 
             st.dataframe(
+
                 pd.DataFrame(
                     wallet_scores[:20]
                 ),
+
                 use_container_width=True,
+
                 hide_index=True
             )
 
@@ -1363,7 +1598,14 @@ with tabs[1]:
             "🧬 Transaction DNA"
         )
 
-        if isinstance(dna, dict) and "error" not in dna:
+        if (
+            isinstance(
+                dna,
+                dict
+            )
+            and
+            "error" not in dna
+        ):
 
             col1, col2, col3, col4 = st.columns(4)
 
@@ -1500,26 +1742,37 @@ with tabs[1]:
 
                 rows.append(
                     {
-                        "Transaction": short_address(
+
+                        "Transaction":
+                            short_address(
+                                item.get(
+                                    "hash",
+                                    "Unknown"
+                                )
+                            ),
+
+                        "Score":
                             item.get(
-                                "hash",
-                                "Unknown"
+                                "score",
+                                0
+                            ),
+
+                        "Reason":
+                            item.get(
+                                "reason",
+                                ""
                             )
-                        ),
-                        "Score": item.get(
-                            "score",
-                            0
-                        ),
-                        "Reason": item.get(
-                            "reason",
-                            ""
-                        )
                     }
                 )
 
             st.dataframe(
-                pd.DataFrame(rows),
+
+                pd.DataFrame(
+                    rows
+                ),
+
                 use_container_width=True,
+
                 hide_index=True
             )
 
@@ -1552,38 +1805,55 @@ with tabs[1]:
 
                 rows.append(
                     {
-                        "Address": short_address(
+
+                        "Address":
+                            short_address(
+                                match.get(
+                                    "address",
+                                    ""
+                                )
+                            ),
+
+                        "Name":
                             match.get(
-                                "address",
+                                "name",
+                                "Unknown"
+                            ),
+
+                        "Type":
+                            match.get(
+                                "type",
+                                "Unknown"
+                            ),
+
+                        "Country":
+                            match.get(
+                                "country",
+                                "Unknown"
+                            ),
+
+                        "Role":
+                            match.get(
+                                "transaction_role",
+                                ""
+                            ),
+
+                        "Confidence":
+                            match.get(
+                                "confidence",
                                 ""
                             )
-                        ),
-                        "Name": match.get(
-                            "name",
-                            "Unknown"
-                        ),
-                        "Type": match.get(
-                            "type",
-                            "Unknown"
-                        ),
-                        "Country": match.get(
-                            "country",
-                            "Unknown"
-                        ),
-                        "Role": match.get(
-                            "transaction_role",
-                            ""
-                        ),
-                        "Confidence": match.get(
-                            "confidence",
-                            ""
-                        )
                     }
                 )
 
             st.dataframe(
-                pd.DataFrame(rows),
+
+                pd.DataFrame(
+                    rows
+                ),
+
                 use_container_width=True,
+
                 hide_index=True
             )
 
@@ -1632,43 +1902,62 @@ with tabs[1]:
 
                 rows.append(
                     {
-                        "Exchange / VASP": match.get(
-                            "name",
-                            "Unknown"
-                        ),
-                        "Address": short_address(
+
+                        "Exchange / VASP":
                             match.get(
-                                "address",
+                                "name",
+                                "Unknown"
+                            ),
+
+                        "Address":
+                            short_address(
+                                match.get(
+                                    "address",
+                                    ""
+                                )
+                            ),
+
+                        "Type":
+                            match.get(
+                                "type",
+                                "Unknown"
+                            ),
+
+                        "Country":
+                            match.get(
+                                "country",
+                                "Unknown"
+                            ),
+
+                        "Hop":
+                            match.get(
+                                "hop"
+                            ),
+
+                        "Role":
+                            ", ".join(
+                                match.get(
+                                    "transaction_roles",
+                                    []
+                                )
+                            ),
+
+                        "Association":
+                            match.get(
+                                "association",
                                 ""
                             )
-                        ),
-                        "Type": match.get(
-                            "type",
-                            "Unknown"
-                        ),
-                        "Country": match.get(
-                            "country",
-                            "Unknown"
-                        ),
-                        "Hop": match.get(
-                            "hop"
-                        ),
-                        "Role": ", ".join(
-                            match.get(
-                                "transaction_roles",
-                                []
-                            )
-                        ),
-                        "Association": match.get(
-                            "association",
-                            ""
-                        )
                     }
                 )
 
             st.dataframe(
-                pd.DataFrame(rows),
+
+                pd.DataFrame(
+                    rows
+                ),
+
                 use_container_width=True,
+
                 hide_index=True
             )
 
@@ -1752,7 +2041,9 @@ with tabs[1]:
                     for address in shared_destinations:
 
                         st.code(
-                            short_address(address)
+                            short_address(
+                                address
+                            )
                         )
 
                 if shared_wallets:
@@ -1764,7 +2055,9 @@ with tabs[1]:
                     for address in shared_wallets:
 
                         st.code(
-                            short_address(address)
+                            short_address(
+                                address
+                            )
                         )
 
         else:
@@ -1830,15 +2123,18 @@ with tabs[1]:
         )
 
         st.write(
-            f"- Transactions analysed: {len(transactions)}"
+            f"- Transactions analysed: "
+            f"{len(transactions)}"
         )
 
         st.write(
-            f"- Wallet nodes: {len(wallet_hops)}"
+            f"- Wallet nodes: "
+            f"{len(wallet_hops)}"
         )
 
         st.write(
-            f"- Fund-flow connections: {len(connections)}"
+            f"- Fund-flow connections: "
+            f"{len(connections)}"
         )
 
         st.write(
@@ -1906,39 +2202,73 @@ with tabs[1]:
         )
 
         # ----------------------------------------------------
-        # JSON report
+        # JSON REPORT
         # ----------------------------------------------------
 
         report_data = generate_report_data(
-            wallet_address=wallet_address,
-            chain=data["chain"],
-            transactions=transactions,
-            wallet_hops=wallet_hops,
-            connections=connections,
-            dna=dna,
-            abnormal=abnormal,
-            vasp_matches=vasp_matches,
-            exchange_matches=exchange_matches,
-            cross_case_alerts=cross_case_alerts,
-            risk_score=risk_score,
-            risk_level=risk_level
+
+            wallet_address=
+                wallet_address,
+
+            chain=
+                data["chain"],
+
+            transactions=
+                transactions,
+
+            wallet_hops=
+                wallet_hops,
+
+            connections=
+                connections,
+
+            dna=
+                dna,
+
+            abnormal=
+                abnormal,
+
+            vasp_matches=
+                vasp_matches,
+
+            exchange_matches=
+                exchange_matches,
+
+            cross_case_alerts=
+                cross_case_alerts,
+
+            risk_score=
+                risk_score,
+
+            risk_level=
+                risk_level
         )
 
         import json
 
         report_json = json.dumps(
+
             report_data,
+
             indent=4,
+
             default=str
         )
 
         st.download_button(
+
             "⬇️ Export Investigation Data (JSON)",
-            data=report_json,
+
+            data=
+                report_json,
+
             file_name=(
                 f"{st.session_state.case_id or 'cryptoshield_case'}.json"
             ),
-            mime="application/json",
+
+            mime=
+                "application/json",
+
             use_container_width=True
         )
 
