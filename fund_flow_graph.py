@@ -3,20 +3,9 @@ import networkx as nx
 from pyvis.network import Network
 
 
-def short_address(address):
-    """
-    Convert a long wallet address into a readable form.
-    """
-    if not address:
-        return "Unknown"
-
-    address = str(address)
-
-    if len(address) <= 14:
-        return address
-
-    return address[:6] + "..." + address[-4:]
-
+# ============================================================
+# ADDRESS HELPERS
+# ============================================================
 
 def normalize_address(address):
     if not address:
@@ -25,32 +14,41 @@ def normalize_address(address):
     return str(address).strip().lower()
 
 
-def build_clean_graph(
-    transactions,
-    wallet_hops,
-    start_wallet,
-    max_nodes=35,
-    max_edges=50
-):
+def short_address(address):
+    address = normalize_address(address)
+
+    if not address:
+        return "Unknown"
+
+    if len(address) <= 14:
+        return address
+
+    return address[:6] + "..." + address[-4:]
+
+
+# ============================================================
+# HOP HELPERS
+# ============================================================
+
+def normalize_wallet_hops(wallet_hops):
     """
-    Build a clean directed graph from REAL transaction directions.
+    Convert wallet_hops into:
 
-    Important:
-        transaction.from -> transaction.to
+        {
+            wallet_address: hop_number
+        }
 
-    Hop numbers are used only to classify nodes.
-    They do NOT change the transaction direction.
+    Supports values such as:
+        0
+        1
+        "1"
+        None
     """
 
-    graph = nx.DiGraph()
+    result = {}
 
-    start_wallet = normalize_address(start_wallet)
-
-    # ---------------------------------------------------------
-    # 1. Add nodes that actually have a hop assignment
-    # ---------------------------------------------------------
-
-    valid_wallets = set()
+    if not wallet_hops:
+        return result
 
     for wallet, hop in wallet_hops.items():
 
@@ -67,28 +65,34 @@ def build_clean_graph(
         if hop < 0:
             continue
 
-        valid_wallets.add(wallet)
+        result[wallet] = hop
 
-        graph.add_node(
-            wallet,
-            hop=hop
-        )
+    return result
 
-    # Make sure starting wallet exists
-    if start_wallet:
 
-        graph.add_node(
-            start_wallet,
-            hop=0
-        )
+# ============================================================
+# GET TRANSACTION CONNECTIONS
+# ============================================================
 
-        valid_wallets.add(start_wallet)
+def extract_transaction_edges(transactions):
+    """
+    Extract actual blockchain direction:
 
-    # ---------------------------------------------------------
-    # 2. Build REAL transaction edges
-    # ---------------------------------------------------------
+        from -> to
 
-    edge_counter = {}
+    Returns:
+        {
+            (sender, receiver): {
+                "count": number,
+                "transactions": [...]
+            }
+        }
+    """
+
+    edges = {}
+
+    if not transactions:
+        return edges
 
     for tx in transactions:
 
@@ -106,98 +110,426 @@ def build_clean_graph(
         if sender == receiver:
             continue
 
-        # Only wallets participating in our traced graph
-        if sender not in valid_wallets:
-            continue
+        key = (sender, receiver)
 
-        if receiver not in valid_wallets:
-            continue
+        if key not in edges:
+            edges[key] = {
+                "count": 0,
+                "transactions": []
+            }
 
-        edge = (sender, receiver)
+        edges[key]["count"] += 1
+        edges[key]["transactions"].append(tx)
 
-        edge_counter[edge] = edge_counter.get(edge, 0) + 1
+    return edges
 
-    # ---------------------------------------------------------
-    # 3. Sort edges by importance
-    # ---------------------------------------------------------
 
-    sorted_edges = sorted(
-        edge_counter.items(),
-        key=lambda item: item[1],
-        reverse=True
+# ============================================================
+# CALCULATE MISSING HOPS
+# ============================================================
+
+def calculate_missing_hops(graph, start_wallet, wallet_hops):
+    """
+    If some transaction wallets are not present in wallet_hops,
+    calculate their distance from Hop 0 using BFS.
+    """
+
+    start_wallet = normalize_address(start_wallet)
+
+    if not start_wallet:
+        return wallet_hops
+
+    if start_wallet not in graph:
+        return wallet_hops
+
+    try:
+        distances = nx.single_source_shortest_path_length(
+            graph,
+            start_wallet
+        )
+    except Exception:
+        return wallet_hops
+
+    updated = dict(wallet_hops)
+
+    for wallet, distance in distances.items():
+
+        wallet = normalize_address(wallet)
+
+        if wallet not in updated:
+            updated[wallet] = distance
+
+        else:
+            # Keep the smaller hop distance
+            try:
+                updated[wallet] = min(
+                    int(updated[wallet]),
+                    int(distance)
+                )
+            except Exception:
+                updated[wallet] = distance
+
+    return updated
+
+
+# ============================================================
+# BUILD COMPLETE GRAPH
+# ============================================================
+
+def build_clean_graph(
+    transactions,
+    wallet_hops,
+    start_wallet,
+    max_nodes=40,
+    max_edges=80
+):
+    """
+    Build a directed fund-flow graph.
+
+    IMPORTANT:
+    We do NOT require both sender and receiver
+    to already exist in wallet_hops.
+
+    This fixes the "only one node showing" issue.
+    """
+
+    start_wallet = normalize_address(start_wallet)
+
+    wallet_hops = normalize_wallet_hops(wallet_hops)
+
+    transaction_edges = extract_transaction_edges(
+        transactions
     )
 
-    # ---------------------------------------------------------
-    # 4. Limit edges for visual clarity
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # STEP 1
+    # Create temporary graph using ALL transaction edges
+    # --------------------------------------------------------
 
-    selected_edges = sorted_edges[:max_edges]
+    full_graph = nx.DiGraph()
 
-    for (sender, receiver), count in selected_edges:
+    for (sender, receiver), data in transaction_edges.items():
+
+        full_graph.add_edge(
+            sender,
+            receiver,
+            count=data["count"]
+        )
+
+    # --------------------------------------------------------
+    # STEP 2
+    # Calculate missing hop values
+    # --------------------------------------------------------
+
+    wallet_hops = calculate_missing_hops(
+        full_graph,
+        start_wallet,
+        wallet_hops
+    )
+
+    # Force reported wallet = Hop 0
+    if start_wallet:
+        wallet_hops[start_wallet] = 0
+
+    # --------------------------------------------------------
+    # STEP 3
+    # Build final graph
+    # --------------------------------------------------------
+
+    graph = nx.DiGraph()
+
+    # Add reported wallet first
+    if start_wallet:
+        graph.add_node(
+            start_wallet,
+            hop=0
+        )
+
+    # --------------------------------------------------------
+    # STEP 4
+    # Select nodes based on BFS distance
+    # --------------------------------------------------------
+
+    selected_nodes = set()
+
+    if start_wallet:
+        selected_nodes.add(start_wallet)
+
+    # Sort wallets by hop
+    sorted_wallets = sorted(
+        wallet_hops.items(),
+        key=lambda item: (
+            item[1],
+            item[0]
+        )
+    )
+
+    for wallet, hop in sorted_wallets:
+
+        if len(selected_nodes) >= max_nodes:
+            break
+
+        selected_nodes.add(wallet)
+
+    # --------------------------------------------------------
+    # STEP 5
+    # If still empty, use transaction participants
+    # --------------------------------------------------------
+
+    if len(selected_nodes) <= 1:
+
+        for sender, receiver in transaction_edges:
+
+            if len(selected_nodes) >= max_nodes:
+                break
+
+            selected_nodes.add(sender)
+
+            if len(selected_nodes) >= max_nodes:
+                break
+
+            selected_nodes.add(receiver)
+
+    # --------------------------------------------------------
+    # STEP 6
+    # Add selected nodes
+    # --------------------------------------------------------
+
+    for wallet in selected_nodes:
+
+        hop = wallet_hops.get(wallet)
+
+        if hop is None:
+
+            # Calculate hop if possible
+            if start_wallet and wallet in full_graph:
+
+                try:
+                    path_length = nx.shortest_path_length(
+                        full_graph,
+                        start_wallet,
+                        wallet
+                    )
+
+                    hop = path_length
+
+                except Exception:
+                    hop = "?"
+
+            else:
+                hop = "?"
+
+        graph.add_node(
+            wallet,
+            hop=hop
+        )
+
+    # --------------------------------------------------------
+    # STEP 7
+    # Add ACTUAL transaction edges
+    # --------------------------------------------------------
+
+    candidate_edges = []
+
+    for (sender, receiver), data in transaction_edges.items():
+
+        if sender not in selected_nodes:
+            continue
+
+        if receiver not in selected_nodes:
+            continue
+
+        sender_hop = graph.nodes[sender].get(
+            "hop",
+            "?"
+        )
+
+        receiver_hop = graph.nodes[receiver].get(
+            "hop",
+            "?"
+        )
+
+        # ----------------------------------------------------
+        # Priority:
+        # 1. Direct hop progression
+        # 2. Same-hop connections
+        # 3. Other connections
+        # ----------------------------------------------------
+
+        priority = 3
+
+        try:
+
+            sender_hop_int = int(sender_hop)
+            receiver_hop_int = int(receiver_hop)
+
+            if receiver_hop_int == sender_hop_int + 1:
+                priority = 1
+
+            elif receiver_hop_int == sender_hop_int:
+                priority = 2
+
+        except Exception:
+            pass
+
+        candidate_edges.append(
+            (
+                priority,
+                -data["count"],
+                sender,
+                receiver,
+                data["count"]
+            )
+        )
+
+    # Sort:
+    # First preserve hop-to-next-hop edges
+    # Then high-frequency edges
+    candidate_edges.sort(
+        key=lambda item: (
+            item[0],
+            item[1]
+        )
+    )
+
+    # --------------------------------------------------------
+    # STEP 8
+    # Add edges
+    # --------------------------------------------------------
+
+    for (
+        priority,
+        negative_count,
+        sender,
+        receiver,
+        count
+    ) in candidate_edges[:max_edges]:
 
         graph.add_edge(
             sender,
             receiver,
-            count=count
+            count=count,
+            priority=priority
         )
 
-    # ---------------------------------------------------------
-    # 5. Keep important nodes
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # STEP 9
+    # Preserve at least one connection from Hop 0
+    # --------------------------------------------------------
 
-    if graph.number_of_nodes() > max_nodes:
+    if start_wallet in graph:
 
-        connected_nodes = set()
-
-        # Always keep Hop 0
-        connected_nodes.add(start_wallet)
-
-        # Keep nodes participating in selected edges
-        for sender, receiver in selected_edges:
-
-            connected_nodes.add(sender)
-            connected_nodes.add(receiver)
-
-        # Add lower-hop nodes first
-        remaining_nodes = [
-            node
-            for node in graph.nodes()
-            if node not in connected_nodes
-        ]
-
-        remaining_nodes.sort(
-            key=lambda node: graph.nodes[node].get(
-                "hop",
-                999
-            )
+        outgoing = list(
+            graph.out_edges(start_wallet)
         )
 
-        available = max_nodes - len(connected_nodes)
+        if not outgoing:
 
-        if available > 0:
+            possible_edges = []
 
-            connected_nodes.update(
-                remaining_nodes[:available]
+            for (
+                sender,
+                receiver
+            ), data in transaction_edges.items():
+
+                if sender == start_wallet:
+
+                    possible_edges.append(
+                        (
+                            receiver,
+                            data["count"]
+                        )
+                    )
+
+            possible_edges.sort(
+                key=lambda x: x[1],
+                reverse=True
             )
 
-        graph = graph.subgraph(
-            connected_nodes
-        ).copy()
+            for receiver, count in possible_edges:
+
+                if receiver not in graph:
+                    continue
+
+                graph.add_edge(
+                    start_wallet,
+                    receiver,
+                    count=count,
+                    priority=1
+                )
+
+                break
 
     return graph
 
+
+# ============================================================
+# NODE COLOR
+# ============================================================
+
+def get_hop_color(hop):
+
+    try:
+        hop = int(hop)
+    except Exception:
+        return "#94a3b8"
+
+    if hop == 0:
+        return "#22c55e"
+
+    if hop == 1:
+        return "#3b82f6"
+
+    if hop == 2:
+        return "#a855f7"
+
+    if hop == 3:
+        return "#f97316"
+
+    return "#ef4444"
+
+
+# ============================================================
+# NODE SIZE
+# ============================================================
+
+def get_node_size(hop):
+
+    try:
+        hop = int(hop)
+    except Exception:
+        return 20
+
+    if hop == 0:
+        return 38
+
+    if hop == 1:
+        return 28
+
+    if hop == 2:
+        return 24
+
+    if hop == 3:
+        return 22
+
+    return 20
+
+
+# ============================================================
+# RENDER GRAPH
+# ============================================================
 
 def render_fund_flow_graph(
     transactions,
     wallet_hops,
     start_wallet,
-    max_nodes=35,
-    max_edges=50
+    max_nodes=40,
+    max_edges=80
 ):
-    """
-    Render the blockchain fund flow as an interactive
-    interconnected-node diagram.
-    """
+
+    # --------------------------------------------------------
+    # BUILD GRAPH
+    # --------------------------------------------------------
 
     graph = build_clean_graph(
         transactions=transactions,
@@ -207,40 +539,72 @@ def render_fund_flow_graph(
         max_edges=max_edges
     )
 
+    # --------------------------------------------------------
+    # EMPTY GRAPH
+    # --------------------------------------------------------
+
     if graph.number_of_nodes() == 0:
 
         st.warning(
-            "No connected wallets available for visualization."
+            "No connected wallet transactions available "
+            "for visualization."
         )
 
         return
 
-    # ---------------------------------------------------------
-    # PyVis network
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # GRAPH HEADER
+    # --------------------------------------------------------
+
+    st.subheader(
+        "🕸️ Multi-Hop Fund Flow Network"
+    )
+
+    st.caption(
+        "Actual blockchain transaction direction: "
+        "sender → receiver"
+    )
+
+    # --------------------------------------------------------
+    # CREATE PYVIS NETWORK
+    # --------------------------------------------------------
 
     net = Network(
-        height="700px",
+        height="720px",
         width="100%",
         directed=True,
         bgcolor="#0E1117",
-        font_color="white"
+        font_color="white",
+        notebook=False
     )
+
+    # --------------------------------------------------------
+    # PYVIS OPTIONS
+    # --------------------------------------------------------
 
     net.set_options(
         """
         {
           "nodes": {
             "shape": "dot",
-            "size": 22,
+            "borderWidth": 2,
+            "shadow": {
+              "enabled": true
+            },
             "font": {
               "size": 14,
-              "color": "white"
-            },
-            "borderWidth": 2
+              "face": "Arial",
+              "color": "#ffffff"
+            }
           },
 
           "edges": {
+            "width": 2,
+            "color": {
+              "inherit": false,
+              "color": "#64748b",
+              "highlight": "#ffffff"
+            },
             "arrows": {
               "to": {
                 "enabled": true,
@@ -249,40 +613,53 @@ def render_fund_flow_graph(
             },
             "smooth": {
               "enabled": true,
-              "type": "dynamic"
+              "type": "curvedCW",
+              "roundness": 0.2
             },
-            "width": 2
+            "font": {
+              "size": 11,
+              "color": "#ffffff",
+              "strokeWidth": 3,
+              "strokeColor": "#0E1117"
+            }
           },
 
           "physics": {
             "enabled": true,
             "solver": "forceAtlas2Based",
+
             "forceAtlas2Based": {
-              "gravitationalConstant": -40,
-              "centralGravity": 0.01,
-              "springLength": 160,
-              "springConstant": 0.08,
-              "damping": 0.4
+              "gravitationalConstant": -70,
+              "centralGravity": 0.015,
+              "springLength": 180,
+              "springConstant": 0.06,
+              "damping": 0.45,
+              "avoidOverlap": 1
             },
+
             "stabilization": {
               "enabled": true,
-              "iterations": 200
+              "iterations": 250,
+              "updateInterval": 25
             }
           },
 
           "interaction": {
             "hover": true,
-            "navigationButtons": true,
+            "dragNodes": true,
+            "dragView": true,
             "zoomView": true,
-            "dragNodes": true
+            "navigationButtons": true,
+            "keyboard": true,
+            "tooltipDelay": 100
           }
         }
         """
     )
 
-    # ---------------------------------------------------------
-    # Add nodes
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # ADD NODES
+    # --------------------------------------------------------
 
     for node in graph.nodes():
 
@@ -291,28 +668,73 @@ def render_fund_flow_graph(
             "?"
         )
 
-        label = short_address(node)
+        color = get_hop_color(hop)
 
-        # Different visual size for Hop 0
-        size = 32 if hop == 0 else 20
+        size = get_node_size(hop)
+
+        # -----------------------------------------------
+        # Connection count
+        # -----------------------------------------------
+
+        degree = graph.degree(node)
+
+        incoming = graph.in_degree(node)
+
+        outgoing = graph.out_degree(node)
+
+        # -----------------------------------------------
+        # Node title
+        # -----------------------------------------------
 
         title = (
-            f"Wallet: {node}<br>"
-            f"Hop: {hop}<br>"
-            f"Connections: {graph.degree(node)}"
+            f"<b>Wallet</b>: {node}<br>"
+            f"<b>Hop</b>: {hop}<br>"
+            f"<b>Total Connections</b>: {degree}<br>"
+            f"<b>Incoming</b>: {incoming}<br>"
+            f"<b>Outgoing</b>: {outgoing}"
         )
+
+        # Reported wallet gets special label
+        if normalize_address(node) == normalize_address(
+            start_wallet
+        ):
+
+            label = (
+                "🚨 REPORTED WALLET\n"
+                + short_address(node)
+            )
+
+            size = 42
+
+        else:
+
+            label = (
+                f"Hop {hop}\n"
+                f"{short_address(node)}"
+            )
 
         net.add_node(
             node,
             label=label,
             title=title,
+            color={
+                "background": color,
+                "border": "#ffffff",
+                "highlight": {
+                    "background": color,
+                    "border": "#ffffff"
+                }
+            },
             size=size,
-            group=f"hop_{hop}"
+            font={
+                "color": "#ffffff",
+                "size": 14
+            }
         )
 
-    # ---------------------------------------------------------
-    # Add edges
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # ADD EDGES
+    # --------------------------------------------------------
 
     for sender, receiver, data in graph.edges(
         data=True
@@ -323,62 +745,134 @@ def render_fund_flow_graph(
             1
         )
 
-        title = (
-            f"Fund flow<br>"
-            f"{short_address(sender)} → "
-            f"{short_address(receiver)}<br>"
-            f"Observed transactions: {count}"
+        sender_hop = graph.nodes[sender].get(
+            "hop",
+            "?"
         )
+
+        receiver_hop = graph.nodes[receiver].get(
+            "hop",
+            "?"
+        )
+
+        # -----------------------------------------------
+        # Edge label
+        # -----------------------------------------------
+
+        if count > 1:
+            label = f"{count} tx"
+        else:
+            label = ""
+
+        # -----------------------------------------------
+        # Tooltip
+        # -----------------------------------------------
+
+        title = (
+            "<b>Fund Flow</b><br>"
+            f"{sender}<br>"
+            "↓<br>"
+            f"{receiver}<br><br>"
+            f"<b>From Hop</b>: {sender_hop}<br>"
+            f"<b>To Hop</b>: {receiver_hop}<br>"
+            f"<b>Observed Transactions</b>: {count}"
+        )
+
+        # -----------------------------------------------
+        # Highlight hop progression
+        # -----------------------------------------------
+
+        try:
+
+            if int(receiver_hop) == int(sender_hop) + 1:
+
+                edge_color = "#22c55e"
+                edge_width = 3
+
+            else:
+
+                edge_color = "#64748b"
+                edge_width = 2
+
+        except Exception:
+
+            edge_color = "#64748b"
+            edge_width = 2
 
         net.add_edge(
             sender,
             receiver,
             title=title,
-            label=str(count) if count > 1 else "",
-            arrows="to"
+            label=label,
+            arrows="to",
+            color={
+                "color": edge_color,
+                "highlight": "#ffffff"
+            },
+            width=edge_width
         )
 
-    # ---------------------------------------------------------
-    # Generate HTML
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # SAVE HTML
+    # --------------------------------------------------------
 
     html_file = "cryptoshield_fund_flow.html"
 
-    net.save_graph(html_file)
+    net.save_graph(
+        html_file
+    )
 
-    # ---------------------------------------------------------
-    # Display
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # READ HTML
+    # --------------------------------------------------------
 
-    with open(
-        html_file,
-        "r",
-        encoding="utf-8"
-    ) as file:
+    try:
 
-        html = file.read()
+        with open(
+            html_file,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            html = file.read()
+
+    except Exception as error:
+
+        st.error(
+            f"Unable to load graph: {error}"
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # DISPLAY
+    # --------------------------------------------------------
 
     st.components.v1.html(
         html,
-        height=720,
+        height=740,
         scrolling=True
     )
 
-    # ---------------------------------------------------------
-    # Statistics
-    # ---------------------------------------------------------
+    # ========================================================
+    # GRAPH STATISTICS
+    # ========================================================
 
-    st.markdown("### 🔎 Graph Summary")
+    st.markdown(
+        "### 📊 Fund Flow Statistics"
+    )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
+
         st.metric(
             "Wallet Nodes",
             graph.number_of_nodes()
         )
 
     with col2:
+
         st.metric(
             "Fund Flow Connections",
             graph.number_of_edges()
@@ -386,38 +880,103 @@ def render_fund_flow_graph(
 
     with col3:
 
-        hops = [
-            graph.nodes[node].get(
-                "hop",
-                0
-            )
-            for node in graph.nodes()
-        ]
+        hops = []
 
-        max_hop = max(hops) if hops else 0
+        for node in graph.nodes():
+
+            hop = graph.nodes[node].get(
+                "hop"
+            )
+
+            try:
+                hops.append(int(hop))
+            except Exception:
+                pass
+
+        maximum_hop = max(hops) if hops else 0
 
         st.metric(
             "Maximum Hop",
-            max_hop
+            maximum_hop
         )
 
-    # ---------------------------------------------------------
-    # Hop explanation
-    # ---------------------------------------------------------
+    with col4:
+
+        total_transactions = sum(
+            data.get("count", 1)
+            for _, _, data
+            in graph.edges(data=True)
+        )
+
+        st.metric(
+            "Observed Transactions",
+            total_transactions
+        )
+
+    # ========================================================
+    # LEGEND
+    # ========================================================
 
     st.markdown(
         """
-        **Hop meaning**
+### 🎨 Graph Legend
 
-        - 🟢 Hop 0 → Reported wallet
-        - 🔵 Hop 1 → Directly connected wallet
-        - 🟣 Hop 2 → Two-step connected wallet
-        - 🟠 Hop 3+ → Further traced wallet
+🟢 **Hop 0** → Reported suspect wallet
 
-        **Arrow direction:**  
-        `transaction.from → transaction.to`
+🔵 **Hop 1** → Directly connected wallet
 
-        The graph shows blockchain transaction direction.
-        Hop numbers are used only to describe tracing distance.
-        """
+🟣 **Hop 2** → Two-step connected wallet
+
+🟠 **Hop 3** → Three-step connected wallet
+
+🔴 **Hop 4+** → Further traced wallet
+
+**Green arrows** → Normal hop progression  
+**Grey arrows** → Other observed blockchain connection
+
+**Arrow direction:**  
+`transaction.from → transaction.to`
+"""
     )
+
+    # ========================================================
+    # DEBUG INFORMATION
+    # ========================================================
+
+    with st.expander(
+        "🔧 Graph Debug Information"
+    ):
+
+        st.write(
+            "Transactions received:",
+            len(transactions or [])
+        )
+
+        st.write(
+            "Wallet hops received:",
+            len(wallet_hops or {})
+        )
+
+        st.write(
+            "Graph nodes:",
+            graph.number_of_nodes()
+        )
+
+        st.write(
+            "Graph edges:",
+            graph.number_of_edges()
+        )
+
+        if graph.number_of_nodes() > 0:
+
+            st.write(
+                "Displayed wallets:"
+            )
+
+            for node in graph.nodes():
+
+                st.write(
+                    f"Hop "
+                    f"{graph.nodes[node].get('hop', '?')}: "
+                    f"{node}"
+                )

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-
+from fund_flow_graph import render_fund_flow_graph
 # ============================================================
 # CRYPTO SHIELD
 # Blockchain Fraud Intelligence System
@@ -1103,91 +1103,98 @@ if st.session_state.analysis_complete:
             "be validated by authorized investigators."
         )
 
-    # ========================================================
-    # TAB 2 - FUND FLOW GRAPH
-    # ========================================================
+ # ========================================================
+# TAB 2 - FUND FLOW GRAPH
+# ========================================================
 
-    with tabs[1]:
+with tabs[1]:
 
-        st.subheader(
-            "🕸️ Interconnected Fund Flow Network"
+    st.subheader(
+        "🕸️ Interconnected Fund Flow Network"
+    )
+
+    st.write(
+        "Actual blockchain transaction direction is shown as "
+        "`from → to`. Hop numbers describe tracing distance."
+    )
+
+    # ----------------------------------------------------
+    # VISUAL GRAPH
+    # ----------------------------------------------------
+
+    if transactions:
+
+        render_fund_flow_graph(
+            transactions=transactions,
+            wallet_hops=wallet_hops,
+            start_wallet=wallet_address,
+            max_nodes=40,
+            max_edges=80
         )
 
-        st.write(
-            "Actual blockchain transaction direction is shown as "
-            "`from → to`. Hop numbers describe tracing distance."
+    else:
+
+        st.warning(
+            "No blockchain transactions available "
+            "for fund-flow visualization."
         )
 
-        if render_fund_flow_graph:
+    # ----------------------------------------------------
+    # CONNECTION TABLE
+    # ----------------------------------------------------
 
-            render_fund_flow_graph(
-                transactions=transactions,
-                wallet_hops=wallet_hops,
-                start_wallet=wallet_address,
-                max_nodes=25,
-                max_edges=35
+    st.divider()
+
+    st.markdown(
+        "### 🔄 Fund Flow Connections"
+    )
+
+    if connections:
+
+        display_connections = []
+
+        for connection in connections[:80]:
+
+            sender = connection.get(
+                "from",
+                ""
             )
 
-        else:
-
-            st.error(
-                "fund_flow_graph.py could not be imported."
+            receiver = connection.get(
+                "to",
+                ""
             )
 
-            st.info(
-                "Make sure fund_flow_graph.py exists inside "
-                "D:\\CryptoShield"
+            display_connections.append(
+                {
+                    "From": short_address(sender),
+                    "To": short_address(receiver),
+
+                    "From Hop": connection.get(
+                        "from_hop",
+                        "-"
+                    ),
+
+                    "To Hop": connection.get(
+                        "to_hop",
+                        "-"
+                    )
+                }
             )
 
-        st.divider()
-
-        st.markdown(
-            "### 🔄 Fund Flow Connections"
+        st.dataframe(
+            pd.DataFrame(
+                display_connections
+            ),
+            use_container_width=True,
+            hide_index=True
         )
 
-        if connections:
+    else:
 
-            display_connections = []
-
-            for connection in connections[:50]:
-
-                sender = connection.get(
-                    "from",
-                    ""
-                )
-
-                receiver = connection.get(
-                    "to",
-                    ""
-                )
-
-                display_connections.append(
-                    {
-                        "From": short_address(sender),
-                        "To": short_address(receiver),
-                        "From Hop": connection.get(
-                            "from_hop"
-                        ),
-                        "To Hop": connection.get(
-                            "to_hop"
-                        )
-                    }
-                )
-
-            st.dataframe(
-                pd.DataFrame(
-                    display_connections
-                ),
-                use_container_width=True,
-                hide_index=True
-            )
-
-        else:
-
-            st.info(
-                "No fund-flow connections found."
-            )
-
+        st.info(
+            "No fund-flow connections found."
+        )
     # ========================================================
     # TAB 3 - SUSPICIOUS WALLETS
     # ========================================================
