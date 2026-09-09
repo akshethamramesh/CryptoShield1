@@ -1,0 +1,20 @@
+{
+  "0x1111111111111111111111111111111111111111": {
+    "name": "Demo Exchange Alpha",
+    "type": "Centralized Exchange",
+    "country": "Demo",
+    "label_source": "CryptoShield Demo Registry"
+  },
+  "0x2222222222222222222222222222222222222222": {
+    "name": "Demo Exchange Beta",
+    "type": "Centralized Exchange",
+    "country": "Demo",
+    "label_source": "CryptoShield Demo Registry"
+  },
+  "0x3333333333333333333333333333333333333333": {
+    "name": "Demo Exchange Gamma",
+    "type": "Centralized Exchange",
+    "country": "Demo",
+    "label_source": "CryptoShield Demo Registry"
+  }
+}
