@@ -37,7 +37,6 @@ CHAIN_IDS = {
     "BSC": 56
 }
 
-# FAST + DEMO FRIENDLY SETTINGS
 MAX_WALLETS_PER_NODE = 3
 
 MAX_TRANSFERS_PER_WALLET = 50
@@ -113,20 +112,20 @@ def etherscan_request(params):
 
         return []
 
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException as error:
 
         print(
             "Etherscan API request error:",
-            e
+            error
         )
 
         return []
 
-    except Exception as e:
+    except Exception as error:
 
         print(
             "Unexpected API error:",
-            e
+            error
         )
 
         return []
@@ -154,7 +153,6 @@ def get_normal_transactions(
         f"{chain}:{wallet}:normal"
     )
 
-    # Return cached result
     if cache_key in transaction_cache:
 
         return transaction_cache[
@@ -222,7 +220,6 @@ def get_normal_transactions(
                     )
                 )
 
-                # ETH / BNB
                 tx["value"] = (
                     raw_value / 10**18
                 )
@@ -351,8 +348,7 @@ def get_token_transactions(
                 )
 
                 tx["value"] = (
-                    raw_value
-                    /
+                    raw_value /
                     (10 ** decimals)
                 )
 
@@ -492,7 +488,7 @@ def get_wallet_transactions(
         )
 
     # --------------------------------------------------------
-    # Remove duplicates
+    # Deduplicate
     # --------------------------------------------------------
 
     transactions = (
@@ -531,10 +527,8 @@ def find_connected_wallets(
     current_wallet
 ):
 
-    current_wallet = (
-        normalize_address(
-            current_wallet
-        )
+    current_wallet = normalize_address(
+        current_wallet
     )
 
     wallet_counter = Counter()
@@ -555,7 +549,6 @@ def find_connected_wallets(
             )
         )
 
-        # Sender
         if (
             sender
             and sender != current_wallet
@@ -565,7 +558,6 @@ def find_connected_wallets(
                 sender
             ] += 1
 
-        # Receiver
         if (
             receiver
             and receiver != current_wallet
@@ -575,7 +567,6 @@ def find_connected_wallets(
                 receiver
             ] += 1
 
-    # Select only top connected wallets
     ranked_wallets = [
 
         wallet
@@ -639,7 +630,7 @@ def trace_wallet(
     connections = []
 
     # --------------------------------------------------------
-    # Start tracing
+    # Console information
     # --------------------------------------------------------
 
     print()
@@ -680,7 +671,6 @@ def trace_wallet(
             wallet
         )
 
-        # Already visited?
         if wallet in visited:
 
             continue
@@ -694,8 +684,7 @@ def trace_wallet(
         ] = hop
 
         print(
-            f"\n[Hop {hop}] "
-            f"Analysing: {wallet}"
+            f"\n[Hop {hop}] Analysing: {wallet}"
         )
 
         # ----------------------------------------------------
@@ -711,8 +700,7 @@ def trace_wallet(
         )
 
         print(
-            f"Transactions: "
-            f"{len(transactions)}"
+            f"Transactions: {len(transactions)}"
         )
 
         # ----------------------------------------------------
@@ -736,7 +724,7 @@ def trace_wallet(
             )
 
         # ----------------------------------------------------
-        # Stop at maximum hop
+        # Maximum hop
         # ----------------------------------------------------
 
         if hop >= max_hop:
@@ -748,7 +736,7 @@ def trace_wallet(
             continue
 
         # ----------------------------------------------------
-        # Find important connected wallets
+        # Connected wallets
         # ----------------------------------------------------
 
         connected_wallets = (
@@ -766,33 +754,24 @@ def trace_wallet(
         )
 
         # ----------------------------------------------------
-        # Create graph connections
+        # Graph connections
         # ----------------------------------------------------
 
         for connected_wallet in (
             connected_wallets
         ):
 
-            connected_wallet = (
-                normalize_address(
-                    connected_wallet
-                )
+            connected_wallet = normalize_address(
+                connected_wallet
             )
 
             if not connected_wallet:
 
                 continue
 
-            if (
-                connected_wallet
-                == wallet
-            ):
+            if connected_wallet == wallet:
 
                 continue
-
-            # -----------------------------------------------
-            # Store edge
-            # -----------------------------------------------
 
             connection = {
 
@@ -806,7 +785,6 @@ def trace_wallet(
                     hop + 1
             }
 
-            # Avoid duplicate graph edges
             edge_exists = any(
 
                 existing["from"]
@@ -822,8 +800,7 @@ def trace_wallet(
                 existing["hop"]
                 == connection["hop"]
 
-                for existing
-                in connections
+                for existing in connections
             )
 
             if not edge_exists:
@@ -832,14 +809,7 @@ def trace_wallet(
                     connection
                 )
 
-            # -----------------------------------------------
-            # Add next wallet to BFS
-            # -----------------------------------------------
-
-            if (
-                connected_wallet
-                not in visited
-            ):
+            if connected_wallet not in visited:
 
                 queue.append(
                     (
@@ -858,7 +828,6 @@ def trace_wallet(
         )
     )
 
-    # Sort transactions
     all_transactions.sort(
         key=lambda tx: int(
             tx.get(
@@ -875,40 +844,33 @@ def trace_wallet(
 
     result = {
 
-        # Main wallet
         "start_wallet":
             start_wallet,
 
-        # Chain
         "chain":
             chain,
 
-        # All transactions
         "transactions":
             all_transactions,
 
-        # Wallets
         "visited_wallets":
             list(visited),
 
         "connected_wallets":
             list(visited),
 
-        # Hop information
         "wallet_hops":
             wallet_hops,
 
-        # IMPORTANT FOR GRAPH
         "connections":
             connections,
 
-        # Maximum hop
         "max_hop":
             max_hop
     }
 
     # ========================================================
-    # PRINT SUMMARY
+    # SUMMARY
     # ========================================================
 
     print()
@@ -941,17 +903,13 @@ def trace_wallet(
         "=========================================="
     )
 
-    # Print hop summary
     for wallet, wallet_hop in (
         wallet_hops.items()
     ):
 
         print(
-            f"Hop {wallet_hop}: "
-            f"{wallet}"
+            f"Hop {wallet_hop}: {wallet}"
         )
-
-    print()
 
     return result
 
@@ -984,6 +942,16 @@ def clear_transaction_cache():
     print(
         "CryptoShield transaction cache cleared."
     )
+
+
+# ============================================================
+# IMPORTANT:
+# app.py expects clear_cache()
+# ============================================================
+
+def clear_cache():
+
+    clear_transaction_cache()
 
 
 # ============================================================
@@ -1037,8 +1005,7 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Hop {hop}: "
-            f"{wallet_address}"
+            f"Hop {hop}: {wallet_address}"
         )
 
     print(
@@ -1051,8 +1018,7 @@ if __name__ == "__main__":
 
         print(
             f"Hop {connection['hop']}: "
-            f"{connection['from']} "
-            f"-> "
+            f"{connection['from']} -> "
             f"{connection['to']}"
         )
 
